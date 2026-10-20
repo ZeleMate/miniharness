@@ -1,16 +1,14 @@
 """Characterization tests: pin down exactly what goes over the wire.
 
-Fake SDK clients record the request and return canned responses, so these
+Fake SDK clients (injected into the providers) record the request and return canned responses, so these
 run offline. They exist to keep refactors honest: the payloads must not change.
 """
 
 from types import SimpleNamespace as NS
 
-import anthropic
-import openai
 import pytest
 
-from miniharness.llm import call_llm
+from miniharness.providers import AnthropicProvider, OpenRouterProvider
 from miniharness.tools import TOOLS
 from miniharness.types import Message, ToolCall
 
@@ -44,27 +42,6 @@ class FakeClient:
         return self.response
 
 
-@pytest.fixture
-def fake_openai(monkeypatch):
-    def install(response):
-        client = FakeClient(response)
-        monkeypatch.setattr(openai, "OpenAI", lambda **_: client)
-        monkeypatch.setenv("OPENROUTER_API_KEY", "test")
-        return client
-
-    return install
-
-
-@pytest.fixture
-def fake_anthropic(monkeypatch):
-    def install(response):
-        client = FakeClient(response)
-        monkeypatch.setattr(anthropic, "Anthropic", lambda **_: client)
-        return client
-
-    return install
-
-
 # --- OpenRouter (OpenAI chat format) -----------------------------------------
 
 
@@ -79,10 +56,10 @@ def openai_response(content=None, tool_calls=None, finish_reason="stop"):
     )
 
 
-def test_openrouter_request_payload(fake_openai):
-    client = fake_openai(openai_response(content="done"))
+def test_openrouter_request_payload():
+    client = FakeClient(openai_response(content="done"))
 
-    call_llm("openrouter", "some/model", CONVERSATION, TOOLS)
+    OpenRouterProvider("some/model", client).complete(CONVERSATION, TOOLS)
 
     req = client.requests[0]
     assert req["model"] == "some/model"
@@ -110,11 +87,11 @@ def test_openrouter_request_payload(fake_openai):
     }
 
 
-def test_openrouter_parses_tool_calls(fake_openai):
+def test_openrouter_parses_tool_calls():
     tc = NS(id="x1", function=NS(name="add", arguments='{"a": 1, "b": 2}'))
-    fake_openai(openai_response(tool_calls=[tc], finish_reason="tool_calls"))
+    client = FakeClient(openai_response(tool_calls=[tc], finish_reason="tool_calls"))
 
-    resp = call_llm("openrouter", "m", CONVERSATION[:2], TOOLS)
+    resp = OpenRouterProvider("m", client).complete(CONVERSATION[:2], TOOLS)
 
     assert resp.stop_reason == "tool_calls"
     assert resp.message.content == ""
@@ -122,16 +99,16 @@ def test_openrouter_parses_tool_calls(fake_openai):
 
 
 @pytest.mark.parametrize(("finish", "expected"), [("stop", "end"), ("length", "max_tokens")])
-def test_openrouter_stop_reasons(fake_openai, finish, expected):
-    fake_openai(openai_response(content="hi", finish_reason=finish))
+def test_openrouter_stop_reasons(finish, expected):
+    client = FakeClient(openai_response(content="hi", finish_reason=finish))
 
-    assert call_llm("openrouter", "m", CONVERSATION[:2], TOOLS).stop_reason == expected
+    assert OpenRouterProvider("m", client).complete(CONVERSATION[:2], TOOLS).stop_reason == expected
 
 
-def test_openrouter_omits_tools_when_empty(fake_openai):
-    client = fake_openai(openai_response(content="hi"))
+def test_openrouter_omits_tools_when_empty():
+    client = FakeClient(openai_response(content="hi"))
 
-    call_llm("openrouter", "m", CONVERSATION[:2], {})
+    OpenRouterProvider("m", client).complete(CONVERSATION[:2], {})
 
     assert "tools" not in client.requests[0]
 
@@ -143,10 +120,10 @@ def anthropic_response(blocks, stop_reason="end_turn"):
     return NS(content=blocks, stop_reason=stop_reason)
 
 
-def test_anthropic_request_payload(fake_anthropic):
-    client = fake_anthropic(anthropic_response([NS(type="text", text="done")]))
+def test_anthropic_request_payload():
+    client = FakeClient(anthropic_response([NS(type="text", text="done")]))
 
-    call_llm("anthropic", "claude-x", CONVERSATION, TOOLS)
+    AnthropicProvider("claude-x", client).complete(CONVERSATION, TOOLS)
 
     req = client.requests[0]
     assert req["model"] == "claude-x"
@@ -177,8 +154,8 @@ def test_anthropic_request_payload(fake_anthropic):
     }
 
 
-def test_anthropic_replays_raw_assistant_content(fake_anthropic):
-    client = fake_anthropic(anthropic_response([NS(type="text", text="ok")]))
+def test_anthropic_replays_raw_assistant_content():
+    client = FakeClient(anthropic_response([NS(type="text", text="ok")]))
     raw = [NS(type="thinking", thinking=""), NS(type="text", text="earlier")]
     convo = [
         Message(role="user", content="hi"),
@@ -186,22 +163,22 @@ def test_anthropic_replays_raw_assistant_content(fake_anthropic):
         Message(role="user", content="again"),
     ]
 
-    call_llm("anthropic", "claude-x", convo, {})
+    AnthropicProvider("claude-x", client).complete(convo, {})
 
     assert client.requests[0]["messages"][1] == {"role": "assistant", "content": raw}
     assert "system" not in client.requests[0]
     assert "tools" not in client.requests[0]
 
 
-def test_anthropic_parses_response(fake_anthropic):
+def test_anthropic_parses_response():
     blocks = [
         NS(type="thinking", thinking=""),
         NS(type="text", text="Checking."),
         NS(type="tool_use", id="t1", name="add", input={"a": 1, "b": 2}),
     ]
-    fake_anthropic(anthropic_response(blocks, stop_reason="tool_use"))
+    client = FakeClient(anthropic_response(blocks, stop_reason="tool_use"))
 
-    resp = call_llm("anthropic", "claude-x", CONVERSATION[:2], TOOLS)
+    resp = AnthropicProvider("claude-x", client).complete(CONVERSATION[:2], TOOLS)
 
     assert resp.stop_reason == "tool_calls"
     assert resp.message.content == "Checking."
@@ -213,7 +190,7 @@ def test_anthropic_parses_response(fake_anthropic):
     ("stop", "expected"),
     [("end_turn", "end"), ("max_tokens", "max_tokens"), ("refusal", "refusal")],
 )
-def test_anthropic_stop_reasons(fake_anthropic, stop, expected):
-    fake_anthropic(anthropic_response([NS(type="text", text="x")], stop_reason=stop))
+def test_anthropic_stop_reasons(stop, expected):
+    client = FakeClient(anthropic_response([NS(type="text", text="x")], stop_reason=stop))
 
-    assert call_llm("anthropic", "claude-x", CONVERSATION[:2], TOOLS).stop_reason == expected
+    assert AnthropicProvider("claude-x", client).complete(CONVERSATION[:2], TOOLS).stop_reason == expected

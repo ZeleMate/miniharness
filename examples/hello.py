@@ -9,6 +9,7 @@ import argparse
 from dotenv import load_dotenv
 
 from miniharness import Agent
+from miniharness.providers import AnthropicProvider, OpenRouterProvider
 
 
 def main() -> None:
@@ -19,8 +20,13 @@ def main() -> None:
     parser.add_argument("task", nargs="?", default="What is (17 * 23) + 4? Also, what time is it in UTC?")
     args = parser.parse_args()
 
-    agent = Agent(provider=args.provider, model=args.model)
-    print(f"[{agent.provider} / {agent.model}]")
+    # Temporary: choosing a provider from a string is stage 3 (Factory)
+    if args.provider == "anthropic":
+        provider = AnthropicProvider(model=args.model)
+    else:
+        provider = OpenRouterProvider(model=args.model)
+    agent = Agent(provider=provider)
+    print(f"[{type(provider).__name__} / {provider.model}]")
     answer = agent.run(args.task)
 
     for m in agent.messages[2:]:

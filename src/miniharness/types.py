@@ -1,9 +1,15 @@
 """Provider-neutral data types. Everything inside the harness speaks these."""
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Callable, Literal, TypedDict
 
 Role = Literal["system", "user", "assistant", "tool"]
+
+
+class ToolSpec(TypedDict):
+    description: str
+    parameters: dict[str, Any]  # JSON Schema for the arguments
+    fn: Callable[..., Any]
 
 
 @dataclass

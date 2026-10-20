@@ -7,7 +7,8 @@ registry with dependency injection.
 
 import json
 from datetime import datetime, timezone
-from typing import Any
+
+from miniharness.types import ToolSpec
 
 
 def _add(a: float, b: float) -> float:
@@ -28,7 +29,7 @@ _NUMBER_PAIR = {
     "required": ["a", "b"],
 }
 
-TOOLS: dict[str, dict[str, Any]] = {
+TOOLS: dict[str, ToolSpec] = {
     "add": {
         "description": "Add two numbers.",
         "parameters": _NUMBER_PAIR,
@@ -47,7 +48,7 @@ TOOLS: dict[str, dict[str, Any]] = {
 }
 
 
-def run_tool(name: str, arguments: dict[str, Any]) -> str:
+def run_tool(name: str, arguments: dict) -> str:
     """Run a tool and return its result as a string (errors included)."""
     tool = TOOLS.get(name)
     if tool is None:

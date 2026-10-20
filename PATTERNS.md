@@ -27,11 +27,34 @@ One entry per pattern, written when you apply it. Template:
 
 ---
 
-## Smells waiting for stage 2 (fill in your own observations)
+## Strategy (stage 2)
 
-- [ ] `call_llm` branches on a provider string; adding one means editing it
-- [ ] Clients are rebuilt on every call
-- [ ] Translation code is inline, so it can't be unit-tested offline
-- [ ] `MOCK_RESPONSES` is a global that tests must clear
-- [ ] `Agent.__init__` duplicates provider knowledge (default models)
-- [ ] `Message.raw` only makes sense for Anthropic: a leaky abstraction?
+- **Problem:** `call_llm` branched on a provider string; every new provider meant editing it.
+- **Shape:** `Provider` protocol with `complete(messages, tools)`. `Agent` holds
+  one and never asks which it is. Swapping LLMs means passing a different object.
+- **vs Template Method:** both vary one step of an algorithm. Template Method varies
+  it by *inheritance* (override `think()`); Strategy varies it by *composition* (pass a
+  provider). Composition wins here because the provider choice is independent of the
+  agent type: a `ReActAgent` and a `PlannerAgent` can each use any provider.
+- **Your notes:**
+
+## Adapter (stage 2)
+
+- **Problem:** two SDKs with incompatible message formats. The harness wants one.
+- **Shape:** `OpenAIChatAdapter` and `AnthropicMessagesAdapter` convert both ways
+  between our `Message`/`ToolCall` types and each wire format. Pure functions, no network.
+- **Watch for:** `Message.raw` is where the adapter abstraction *leaks* (DECISIONS.md D8).
+  Every adapter eventually meets something the common interface can't express.
+- **Your notes:**
+
+---
+
+## Stage 2 smells: before → after
+
+- [x] `call_llm` branches on a provider string → one class per provider
+- [x] Clients rebuilt on every call → built once per provider
+- [x] Translation can't be tested offline → pure adapters + injected fake clients
+- [x] `MOCK_RESPONSES` global → `MockProvider(responses)` instance
+- [x] `Agent.__init__` knows default models → each provider owns its default
+- [ ] `Message.raw` leaks Anthropic details → still open (D8)
+- [ ] *New smell:* `examples/hello.py` branches on a provider string → stage 3 (Factory)

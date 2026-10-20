@@ -3,11 +3,12 @@
 Stage 1 (Template Method): `run()` is the fixed skeleton of the loop.
 The steps it calls (`initial_messages`, `think`, `act`, `finish`) are the
 hooks a subclass can override without touching the loop itself.
+
+Stage 2 (Strategy): which LLM answers is a `Provider` passed in from outside.
+The agent never knows which one it is talking to.
 """
 
-import os
-
-from miniharness.llm import call_llm
+from miniharness.providers import Provider
 from miniharness.tools import TOOLS, run_tool
 from miniharness.types import LLMResponse, Message, ToolCall
 
@@ -20,21 +21,11 @@ DEFAULT_SYSTEM_PROMPT = (
 class Agent:
     def __init__(
         self,
-        provider: str = "openrouter",
-        model: str | None = None,
+        provider: Provider,
         system_prompt: str = DEFAULT_SYSTEM_PROMPT,
         max_steps: int = 10,
     ):
         self.provider = provider
-        # Naive: another provider branch that has to stay in sync with llm.py
-        if model is None:
-            if provider == "openrouter":
-                model = os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
-            elif provider == "anthropic":
-                model = os.environ.get("ANTHROPIC_MODEL", "claude-opus-5-5")
-            else:
-                model = "mock"
-        self.model = model
         self.system_prompt = system_prompt
         self.max_steps = max_steps
         self.messages: list[Message] = []
@@ -60,7 +51,7 @@ class Agent:
         ]
 
     def think(self, messages: list[Message]) -> LLMResponse:
-        return call_llm(self.provider, self.model, messages, TOOLS)
+        return self.provider.complete(messages, TOOLS)
 
     def act(self, tool_calls: list[ToolCall]) -> list[Message]:
         return [

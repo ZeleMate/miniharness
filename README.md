@@ -24,9 +24,11 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 | File | What it is |
 |---|---|
 | `src/miniharness/types.py` | Provider-neutral `Message`, `ToolCall`, `LLMResponse` |
-| `src/miniharness/agent.py` | The loop (stage 1: Template Method) |
-| `src/miniharness/llm.py` | **Naive** provider code: one big `if/elif`. Your first refactor target |
+| `src/miniharness/agent.py` | The loop (stage 1: Template Method), with an injected provider |
+| `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy) |
+| `src/miniharness/adapters/` | Our types ↔ OpenAI / Anthropic wire formats (stage 2: Adapter) |
 | `src/miniharness/tools.py` | **Naive** global tool registry |
+| `DECISIONS.md` | Architecture decision log: options, trade-offs, open questions |
 | `PATTERNS.md` | Your learning journal |
 
 ## Roadmap
@@ -36,7 +38,7 @@ Only add a pattern once you feel the pain it solves.
 | # | Stage | Pattern(s) |
 |---|---|---|
 | 1 | Core loop with overridable steps | Template Method ✅ (scaffolded) |
-| 2 | OpenRouter / Anthropic / Mock providers | Strategy, Adapter |
+| 2 | OpenRouter / Anthropic / Mock providers | Strategy, Adapter ✅ |
 | 3 | Providers from config | Factory Method, Abstract Factory |
 | 4 | Fluent request construction | Builder |
 | 5 | Tool calls as objects with undo and replay | Command |
@@ -60,5 +62,6 @@ Only add a pattern once you feel the pain it solves.
 1. **Naive first, then refactor.** Feel the smell before applying the fix.
 2. **Mock first.** `MockLLM` keeps tests deterministic and free.
 3. **Journal everything** in `PATTERNS.md`: the problem, the alternatives, the cost.
+   Record design choices in `DECISIONS.md`, including the small ones.
 4. **Notice where Python dissolves a pattern** (functions as Strategy/Command, generators as Iterator).
 5. **No speculative patterns.** A real need (a second provider, a hard-to-write test) must come first.
