@@ -60,7 +60,7 @@ Only add a pattern once you feel the pain it solves.
 ## Rules of the road
 
 1. **Naive first, then refactor.** Feel the smell before applying the fix.
-2. **Mock first.** `MockLLM` keeps tests deterministic and free.
+2. **Mock first.** `MockProvider` keeps tests deterministic and free.
 3. **Journal everything** in `PATTERNS.md`: the problem, the alternatives, the cost.
    Record design choices in `DECISIONS.md`, including the small ones.
 4. **Notice where Python dissolves a pattern** (functions as Strategy/Command, generators as Iterator).
