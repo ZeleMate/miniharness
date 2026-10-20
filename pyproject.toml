@@ -22,3 +22,7 @@ packages = ["src/miniharness"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]  # works even if macOS hides the editable-install .pth
+
+[tool.uv]
+python-preference = "only-managed"  # always use uv-installed Python, never Homebrew's
