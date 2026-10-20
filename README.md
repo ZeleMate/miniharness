@@ -7,14 +7,17 @@ tracing, checkpoints and sub-agents.
 
 ## Setup
 
+Uses [uv](https://docs.astral.sh/uv/) for Python, dependencies and the venv.
+
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e '.[dev]'
+uv sync                # creates .venv and installs everything from uv.lock
 cp .env.example .env   # add your OPENROUTER_API_KEY (and optionally ANTHROPIC_API_KEY)
-pytest                 # uses the mock provider: free and offline
-python examples/hello.py
-python examples/hello.py --provider anthropic
+uv run pytest          # uses the mock provider: free and offline
+uv run examples/hello.py
+uv run examples/hello.py --provider anthropic
 ```
+
+Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
 
 ## Layout
 

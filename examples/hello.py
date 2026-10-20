@@ -1,7 +1,7 @@
 """Run the agent against a real model.
 
-    python examples/hello.py                      # OpenRouter (default)
-    python examples/hello.py --provider anthropic
+    uv run examples/hello.py                      # OpenRouter (default)
+    uv run examples/hello.py --provider anthropic
 """
 
 import argparse
