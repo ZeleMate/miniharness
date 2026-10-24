@@ -4,9 +4,12 @@ from miniharness.types import LLMResponse, Message, ToolSpec
 
 @register_provider("mock")
 class MockProvider:
-    """Replays scripted responses and records every conversation it was sent."""
+    """Replays scripted responses and records every conversation it was sent.
 
-    def __init__(self, responses: list[LLMResponse] | None = None, model: str = "mock"):
+    A scripted item that is an exception gets raised instead of returned.
+    """
+
+    def __init__(self, responses: list[LLMResponse | Exception] | None = None, model: str = "mock"):
         self.model = model
         self._responses = list(responses or [])
         self.calls: list[list[Message]] = []
@@ -15,4 +18,7 @@ class MockProvider:
         self.calls.append(list(messages))
         if not self._responses:
             raise RuntimeError("MockProvider ran out of scripted responses")
-        return self._responses.pop(0)
+        item = self._responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item

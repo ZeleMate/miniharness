@@ -7,7 +7,7 @@ tool results go inside a *user* message.
 
 from typing import Any
 
-from miniharness.types import LLMResponse, Message, ToolCall, ToolSpec
+from miniharness.types import LLMResponse, Message, ToolCall, ToolSpec, Usage
 
 _STOP_REASONS = {"tool_use": "tool_calls", "end_turn": "end"}
 
@@ -50,7 +50,15 @@ class AnthropicMessagesAdapter:
         return LLMResponse(
             message=Message(role="assistant", content=text, tool_calls=tool_calls, raw=response.content),
             stop_reason=_STOP_REASONS.get(response.stop_reason, response.stop_reason),
+            usage=self._usage(response),
         )
+
+    def _usage(self, response: Any) -> Usage | None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return None
+        # Tokens only: the API doesn't report cost, so the provider prices it
+        return Usage(usage.input_tokens, usage.output_tokens)
 
     def _assistant_content(self, m: Message) -> Any:
         if m.raw is not None:

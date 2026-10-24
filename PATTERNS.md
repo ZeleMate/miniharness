@@ -117,3 +117,23 @@ One entry per pattern, written when you apply it. Template:
 - **Try it:** add an `AppendFile` tool. What's its undo info? Is a snapshot or an
   inverse cheaper here?
 - **Your notes:**
+
+---
+
+## Decorator (stage 6)
+
+- **Problem:** cost tracking, budgets, retries and caching all apply to *every*
+  provider. Putting them inside each provider duplicates code; subclassing every
+  combination (`CachedRetryingTrackedOpenRouter`) explodes.
+- **Shape:** each wrapper takes a Provider, *is* a Provider, adds one behavior, and
+  delegates the rest. `DiskCache(Retry(BudgetGuard(UsageTracker(base))))`.
+- **The surprise:** order is behavior. Cache outside the tracker means hits are free;
+  cache inside means they're counted twice. Tests pin both (DECISIONS.md D46).
+- **Decorator vs Python `@decorator`:** the same name for different ideas. GoF wraps
+  objects at runtime; `@` wraps functions at definition time.
+- **Decorator vs Proxy (stage 8):** structurally identical. The difference is intent:
+  a Decorator *adds* behavior, while a Proxy *controls access* to the same behavior.
+  `BudgetGuard` arguably leans toward Proxy. Keep that in mind for stage 8.
+- **Try it:** write a `Timing` wrapper that records the latency of each call. Where in the
+  stack should it go to measure network time only, and where to include the cache?
+- **Your notes:**

@@ -124,7 +124,7 @@ codebase decided and why*.
   Config files can then *produce* spec strings, so the two don't conflict.
 
 ### D14. No Abstract Factory yet (your call)
-**Status:** open
+**Status:** open (re-examined in stage 6, see D43)
 - **Why:** an Abstract Factory builds *families* of objects that must match. Today a
   provider's only companion is its one fixed adapter, so a factory for families
   would be ceremony.
@@ -321,3 +321,104 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   commands across tasks. That's handy for "undo the last task", but nothing marks
   where one run ends and the next begins.
 - **Revisit when:** stage 11 (checkpoints) needs run boundaries and serializable history.
+
+---
+
+## Stage 6: Decorator
+
+### D41. Four wrappers: usage tracking, budget guard, retry, dev cache (your call)
+**Status:** accepted
+
+### D42. Decorators are wrapper classes that are Providers themselves (your call)
+**Status:** accepted
+- **Options:** wrapper classes · a middleware list inside the Agent.
+- **Why:** each wrapper is a `Provider`, so the Agent and the factory don't change.
+  Wrappers stack, and the order is visible at the construction site.
+- **Naming trap:** Python's `@decorator` syntax wraps *functions at definition time*.
+  GoF Decorator wraps *objects at runtime*. These are different tools that share a name.
+
+### D43. Each provider reports its own cost; still no Abstract Factory (your call)
+**Status:** accepted
+- OpenRouter returns `usage.cost` (USD) in every response, which we checked live before
+  writing the code. The Anthropic API returns tokens only, so `AnthropicProvider.price()`
+  multiplies by a small table.
+- **D14 re-examined:** pricing is the second per-provider component, which was the
+  stated trigger. But each provider still has exactly one adapter and one pricing rule,
+  both fixed by its own constructor. There's no *family* to keep consistent, so an
+  Abstract Factory would add a layer without preventing any mismatch. D14 stays open.
+
+### D44. When the budget runs out, the Agent stops gracefully (your call)
+**Status:** accepted. `run()` returns `"[stopped: budget] Spent $x of $y"`.
+
+### D45. The Agent catches a `StopRun` base class, not `BudgetExceeded`
+**Status:** accepted (made during implementation)
+- **Why:** the Agent shouldn't know which wrappers exist. Any wrapper (budget, a future
+  rate limit, a kill switch) can end the run cleanly by raising a `StopRun` subclass.
+  The dependency points from wrappers to the Agent's contract, not the other way round.
+
+### D46. Recommended stack: `DiskCache(Retry(BudgetGuard(UsageTracker(base))))`
+**Status:** accepted (made during implementation)
+- Order *is* behavior, and tests pin both cache placements:
+  - cache outside the tracker: hits are free and don't count against the budget
+  - cache inside the tracker: replayed responses count as spend again
+  - retry outside the guard: every retry attempt is checked against the budget
+  - tracker innermost: it sees every real call, including failed ones
+- **Lesson:** decorators are composable, but they aren't *commutative*.
+
+### D47. `BudgetGuard` wraps a `UsageTracker` specifically, not any Provider
+**Status:** accepted (made during implementation)
+- **Why:** the guard needs spend data, and the tracker owns it.
+- **Alternatives:** the guard keeps its own running total (duplicate bookkeeping),
+  or guard and tracker merge into one class (two responsibilities in one object).
+- **Cost:** the guard can only sit directly on a tracker, a constraint the type signature
+  makes explicit.
+
+### D48. The budget fails closed when any cost is unknown
+**Status:** accepted (made during implementation)
+- **Why:** a budget you can't measure, you can't enforce. Treating unknown as $0 would
+  let an unpriced model spend without limit.
+- **Consequence:** an Anthropic model missing from the price table (D52) stops after
+  its first call when a budget is set. That's loud on purpose.
+
+### D49. `MalformedResponseError` carries usage, and the tracker records failed attempts
+**Status:** accepted (made during implementation)
+- **Why:** a malformed reply was still generated and billed. Without this, retries
+  would be invisible spend.
+
+### D50. `Retry` handles semantic failures only, with no backoff
+**Status:** accepted (made during implementation)
+- Both SDKs already retry 429s, 5xx errors and timeouts (2 retries by default). Adding
+  network retries on top would multiply them: 3 of ours × 3 of theirs is up to 9 calls.
+- Bad tool-call JSON isn't a rate problem, so an immediate retry is fine and no sleep is needed.
+
+### D51. Cache key: namespace + model + tools + neutral messages; `raw` excluded; pickle storage
+**Status:** accepted (made during implementation)
+- **What's in the key:** anything that could change the answer. **What's left out:**
+  `raw`, which is provider-specific and derived from the rest. If it were included, the
+  same conversation could hash differently.
+- **Observed limit:** tool *outputs* are part of the conversation. After a `current_time`
+  call the conversation differs every run, so the cache only helps up to the first
+  non-deterministic tool call.
+- `pickle` can store Anthropic's SDK objects, but loading a pickle can run code, so it's
+  only safe for a cache directory you control. Errors aren't cached.
+- **Not the same as prompt caching:** this cache skips the API entirely, on our side.
+  Provider-side prompt caching (D25, still open) makes repeated prefixes cheaper, but
+  the call still happens.
+
+### D52. Anthropic prices are a hardcoded, simplified table
+**Status:** open (made during implementation)
+- It ignores prompt-cache pricing and Haiku's higher rate above 100K input tokens.
+  Hardcoded prices go stale. The real fix would be a pricing source with a date,
+  or the provider's own usage reporting.
+
+### D53. A provider that reports no usage counts as unknown cost
+**Status:** accepted (made during implementation)
+- `UsageTracker` records `Usage()` (cost `None`) when a response has no usage. With a
+  budget, that fails closed (D48). Mock responses in tests must therefore include usage
+  when a budget is involved.
+
+### D54. The example composes the stack by hand instead of using a helper
+**Status:** accepted (made during implementation)
+- **Why:** the order matters (D46) and should be visible where it's built.
+- **Revisit when:** the same stack is built in more than one place. A helper
+  would then be a small Director, like `default_prompt()` in stage 4.

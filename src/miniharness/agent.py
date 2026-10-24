@@ -11,6 +11,7 @@ Stage 5 (Command): tool calls run through an injected `Toolbox`, which wraps
 each one in a command object and keeps a history that can be undone.
 """
 
+from miniharness.errors import StopRun
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider
 from miniharness.tools import Toolbox, default_tools
@@ -35,7 +36,10 @@ class Agent:
     def run(self, task: str) -> str:
         self.messages = self.initial_messages(task)
         for _ in range(self.max_steps):
-            response = self.think(self.messages)
+            try:
+                response = self.think(self.messages)
+            except StopRun as e:
+                return f"[stopped: {e.reason}] {e}"
             self.messages.append(response.message)
             if response.stop_reason != "tool_calls":
                 return self.finish(response)

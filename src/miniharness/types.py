@@ -32,7 +32,19 @@ class Message:
 
 
 @dataclass
+class Usage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float | None = None  # None means the cost is unknown
+
+    def __add__(self, other: "Usage") -> "Usage":
+        cost = None if self.cost_usd is None or other.cost_usd is None else self.cost_usd + other.cost_usd
+        return Usage(self.input_tokens + other.input_tokens, self.output_tokens + other.output_tokens, cost)
+
+
+@dataclass
 class LLMResponse:
     message: Message
     # "end" | "tool_calls" | "max_tokens" | "refusal" | provider-specific
     stop_reason: str
+    usage: Usage | None = None  # None means the provider reported nothing

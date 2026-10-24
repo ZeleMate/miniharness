@@ -7,7 +7,8 @@ Pure translation, no network. Works for any OpenAI-compatible server
 import json
 from typing import Any
 
-from miniharness.types import LLMResponse, Message, ToolCall, ToolSpec
+from miniharness.errors import MalformedResponseError
+from miniharness.types import LLMResponse, Message, ToolCall, ToolSpec, Usage
 
 
 class OpenAIChatAdapter:
@@ -29,14 +30,18 @@ class OpenAIChatAdapter:
 
     def from_wire(self, response: Any) -> LLMResponse:
         choice = response.choices[0]
-        tool_calls = [
-            ToolCall(
-                id=tc.id,
-                name=tc.function.name,
-                arguments=json.loads(tc.function.arguments or "{}"),
-            )
-            for tc in (choice.message.tool_calls or [])
-        ]
+        usage = self._usage(response)
+        try:
+            tool_calls = [
+                ToolCall(
+                    id=tc.id,
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments or "{}"),
+                )
+                for tc in (choice.message.tool_calls or [])
+            ]
+        except json.JSONDecodeError as e:
+            raise MalformedResponseError(f"Tool-call arguments are not valid JSON: {e}", usage) from e
         if tool_calls:
             stop = "tool_calls"
         elif choice.finish_reason == "length":
@@ -50,7 +55,15 @@ class OpenAIChatAdapter:
                 tool_calls=tool_calls,
             ),
             stop_reason=stop,
+            usage=usage,
         )
+
+    def _usage(self, response: Any) -> Usage | None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return None
+        # OpenRouter adds `cost` (USD); plain OpenAI-compatible servers don't
+        return Usage(usage.prompt_tokens, usage.completion_tokens, getattr(usage, "cost", None))
 
     def _message(self, m: Message) -> dict[str, Any]:
         if m.role == "assistant":
