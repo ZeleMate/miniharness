@@ -14,7 +14,7 @@ uv sync                # creates .venv and installs everything from uv.lock
 cp .env.example .env   # add your OPENROUTER_API_KEY (and optionally ANTHROPIC_API_KEY)
 uv run pytest          # uses the mock provider: free and offline
 uv run examples/hello.py
-uv run examples/hello.py --provider anthropic
+uv run examples/hello.py -m anthropic:claude-haiku-5-5
 ```
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
@@ -25,7 +25,7 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 |---|---|
 | `src/miniharness/types.py` | Provider-neutral `Message`, `ToolCall`, `LLMResponse` |
 | `src/miniharness/agent.py` | The loop (stage 1: Template Method), with an injected provider |
-| `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy) |
+| `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory) |
 | `src/miniharness/adapters/` | Our types ↔ OpenAI / Anthropic wire formats (stage 2: Adapter) |
 | `src/miniharness/tools.py` | **Naive** global tool registry |
 | `DECISIONS.md` | Architecture decision log: options, trade-offs, open questions |
@@ -39,7 +39,7 @@ Only add a pattern once you feel the pain it solves.
 |---|---|---|
 | 1 | Core loop with overridable steps | Template Method ✅ (scaffolded) |
 | 2 | OpenRouter / Anthropic / Mock providers | Strategy, Adapter ✅ |
-| 3 | Providers from config | Factory Method, Abstract Factory |
+| 3 | Providers from `"provider:model"` specs | Factory ✅ (Abstract Factory deferred, D14) |
 | 4 | Fluent request construction | Builder |
 | 5 | Tool calls as objects with undo and replay | Command |
 | 6 | Retry, dev cache, cost tracking, `BudgetGuard` | Decorator |

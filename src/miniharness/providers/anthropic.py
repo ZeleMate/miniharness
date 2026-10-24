@@ -2,9 +2,11 @@ import os
 from typing import Any
 
 from miniharness.adapters.anthropic_messages import AnthropicMessagesAdapter
+from miniharness.providers.registry import register_provider
 from miniharness.types import LLMResponse, Message, ToolSpec
 
 
+@register_provider("anthropic")
 class AnthropicProvider:
     def __init__(self, model: str | None = None, client: Any = None, max_tokens: int = 16000):
         self.model = model or os.environ.get("ANTHROPIC_MODEL", "claude-opus-5-5")

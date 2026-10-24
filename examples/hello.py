@@ -1,7 +1,8 @@
 """Run the agent against a real model.
 
-    uv run examples/hello.py                      # OpenRouter (default)
-    uv run examples/hello.py --provider anthropic
+    uv run examples/hello.py                                 # OpenRouter, default model
+    uv run examples/hello.py -m anthropic
+    uv run examples/hello.py -m openrouter:qwen/qwen3-coder "your task"
 """
 
 import argparse
@@ -9,22 +10,20 @@ import argparse
 from dotenv import load_dotenv
 
 from miniharness import Agent
-from miniharness.providers import AnthropicProvider, OpenRouterProvider
+from miniharness.providers import available_providers, create_provider
 
 
 def main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--provider", default="openrouter", choices=["openrouter", "anthropic"])
-    parser.add_argument("--model", default=None)
+    parser.add_argument(
+        "-m", "--model", default="openrouter",
+        help=f"provider[:model], provider one of: {', '.join(available_providers())}",
+    )
     parser.add_argument("task", nargs="?", default="What is (17 * 23) + 4? Also, what time is it in UTC?")
     args = parser.parse_args()
 
-    # Temporary: choosing a provider from a string is stage 3 (Factory)
-    if args.provider == "anthropic":
-        provider = AnthropicProvider(model=args.model)
-    else:
-        provider = OpenRouterProvider(model=args.model)
+    provider = create_provider(args.model)
     agent = Agent(provider=provider)
     print(f"[{type(provider).__name__} / {provider.model}]")
     answer = agent.run(args.task)

@@ -57,4 +57,24 @@ One entry per pattern, written when you apply it. Template:
 - [x] `MOCK_RESPONSES` global → `MockProvider(responses)` instance
 - [x] `Agent.__init__` knows default models → each provider owns its default
 - [ ] `Message.raw` leaks Anthropic details → still open (D8)
-- [ ] *New smell:* `examples/hello.py` branches on a provider string → stage 3 (Factory)
+- [x] *New smell:* `examples/hello.py` branches on a provider string → fixed in stage 3
+
+---
+
+## Factory (stage 3)
+
+- **Problem:** every caller that turned a name into a provider needed its own `if/elif`.
+- **Shape:** `create_provider("openrouter:qwen/qwen3-coder")` looks the name up in
+  a registry that classes fill with `@register_provider("openrouter")`.
+- **Simple factory vs Factory Method vs Abstract Factory:**
+  - *Simple factory:* one function maps names to constructors. That's what we have,
+    plus self-registration.
+  - *Factory Method (GoF):* subclasses override a creation method, e.g. an
+    `Agent.create_provider()` hook. It varies *what gets built* through inheritance,
+    like Template Method does for steps.
+  - *Abstract Factory (GoF):* one object builds a whole family of matching parts.
+    Not needed yet (DECISIONS.md D14).
+- **Python note:** classes are callable objects, so a dict of classes already *is*
+  a factory. The decorator only automates filling the dict.
+- **Smell it introduced:** a global mutable registry (D17).
+- **Your notes:**
