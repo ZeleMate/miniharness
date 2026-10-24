@@ -15,7 +15,8 @@ from miniharness.tools.policy import (
     Verdict,
     default_policy,
 )
-from miniharness.tools.toolbox import Toolbox
+from miniharness.tools.toolbox import Toolbox, ToolSet
+from miniharness.tools.view import ToolboxView
 
 
 def default_tools(workspace: Path | None = None) -> list[Tool]:
@@ -43,7 +44,9 @@ __all__ = [
     "Tool",
     "ToolCommand",
     "ToolResult",
+    "ToolSet",
     "Toolbox",
+    "ToolboxView",
     "Verdict",
     "WriteFile",
     "default_policy",

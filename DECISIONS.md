@@ -54,7 +54,7 @@ codebase decided and why*.
   (c) is purer dependency injection, and stage 3's factory may move us there.
 
 ### D6. SDKs are imported lazily inside the provider constructors
-**Status:** open (made during implementation)
+**Status:** superseded by D70 (stage 8)
 - **Why:** importing `miniharness.providers` doesn't load both SDKs, so an
   Anthropic-only user wouldn't need `openai` installed.
 - **Counterpoint:** both SDKs are required dependencies in `pyproject.toml`, so
@@ -508,3 +508,82 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 - Turn 1 may come from Anthropic (with `raw`) and turn 2 from OpenRouter (without it).
   Both adapters tolerate this today, but it's the D8 leak in action: the conversation
   type doesn't record which provider produced which turn.
+
+---
+
+## Stage 8: Proxy
+
+### D68. Three proxies: virtual (lazy provider), protection (toolbox view), and BudgetGuard reclassified (your call)
+**Status:** accepted
+- **Proxy vs Decorator:** same structure (a wrapper with the same interface), different
+  intent. A decorator *adds behavior*. A proxy *controls access to the real object*:
+  whether you reach it, when, or where it runs.
+- **Skipped:** the remote proxy (running a tool in a subprocess). It's the idea behind MCP
+  servers and sandboxed execution, but it's the most code of the three, and nothing in the
+  project needs process isolation yet.
+
+### D69. A lazy provider fails at first use, with `materialize()` to fail fast on purpose (your call)
+**Status:** accepted
+- The example builds the main provider eagerly with `create_provider`, the same as
+  materializing at startup, and keeps only the fallback lazy. A broken *main* config fails
+  at startup, and a missing *backup* key only matters if the backup is ever needed.
+
+### D70. SDK imports move to the top of each module; the lazy proxy owns laziness
+**Status:** accepted (supersedes D6)
+- **Why:** D6 made constructors import SDKs lazily, which bought almost nothing because
+  both SDKs are required dependencies. Laziness that matters (no key and no client until
+  needed) now lives in one explicit object instead of being scattered across constructors.
+
+### D71. `LazyProvider.model` answers without building when the spec names a model
+**Status:** accepted (made during implementation)
+- `lazy_provider("openrouter:qwen/...")` knows its model from the spec. With no model
+  in the spec, the default lives in the provider's constructor (env var), so asking for
+  `.model` has to build it. Proxies often face this: some questions can be answered by the
+  stand-in, and others need the real thing.
+
+### D72. `BudgetGuard` is a protection proxy, not a decorator (your call; docs only)
+**Status:** accepted
+- It never changes a response; it only decides whether the call happens. The D46
+  stack therefore mixes both kinds: `UsageTracker`, `Retry` and `DiskCache` add behavior,
+  while `BudgetGuard` controls access. The code stays in `wrappers.py`, and the docstring
+  says what it really is. A classification by intent doesn't need to move code.
+
+### D73. Code that unwraps wrappers must also see through proxies
+**Status:** open (made during implementation)
+- `DiskCache` derives its namespace from the innermost provider. Wrapping a `LazyProvider`
+  meant unwrapping it, which builds it. The namespace is now resolved on first use, and
+  `_innermost` materializes lazy proxies.
+- **Smell:** `isinstance`-based unwrapping has to know every wrapper and proxy type.
+  Proxies are meant to be transparent, and introspection breaks that. An alternative is
+  a small `inner_provider()` method on every wrapper and proxy.
+
+### D74. Hidden tools look exactly like missing tools
+**Status:** accepted (made during implementation)
+- Calling a tool the view hides returns `Error: unknown tool 'write_file'`, the same as
+  a tool that doesn't exist. A "permission denied" message would confirm the tool exists.
+  This is information hiding, a common security stance.
+
+### D75. A view shares the real Toolbox's policy and history; undo stays on the Toolbox
+**Status:** accepted (made during implementation)
+- The view only narrows *what can be called*. Allowed calls still pass the policy chain,
+  which gives defense in depth: the view hides tools *before* the model can try them, and
+  the chain decides *after* it tries.
+- No `undo_last` on the view: undoing through a view would undo the shared Toolbox's
+  last change, which might not be one the view made.
+
+### D76. The Agent depends on a `ToolSet` protocol (`specs()` + `execute()`), not on `Toolbox`
+**Status:** accepted (made during implementation)
+- This is the *interface segregation principle*: the Agent uses two methods, so it asks
+  for exactly those two. That's what lets a `ToolboxView`, or a future remote tool set,
+  stand in for a Toolbox.
+
+### D77. Views take an allow list, checked at construction
+**Status:** accepted (made during implementation)
+- An allow list is least privilege: new tools added to the Toolbox stay hidden from
+  existing views. A typo in the list (`"writefile"`) raises immediately instead of
+  silently hiding a tool.
+
+### D78. `LazyProvider` is not thread-safe
+**Status:** accepted (made during implementation)
+- Two threads calling it at the same moment could both build the real provider.
+  Nothing in the harness is concurrent today. A lock fixes it if that changes (D39).

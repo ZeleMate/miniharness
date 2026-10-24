@@ -1,8 +1,19 @@
 """Invoker: runs tool calls as commands and keeps their history."""
 
+from types import MappingProxyType
+from typing import Mapping, Protocol
+
 from miniharness.tools.base import IrreversibleError, Tool, ToolCommand
 from miniharness.tools.policy import Decision, PolicyChain, Verdict, default_policy
 from miniharness.types import ToolCall, ToolSpec
+
+
+class ToolSet(Protocol):
+    """What the Agent needs from its tools: advertise them, and run a call."""
+
+    def specs(self) -> dict[str, ToolSpec]: ...
+
+    def execute(self, call: ToolCall) -> str: ...
 
 
 class Toolbox:
@@ -16,6 +27,10 @@ class Toolbox:
         self.policy = policy if policy is not None else default_policy()
         self.history: list[ToolCommand] = []
         self.denied: list[tuple[ToolCall, Decision]] = []
+
+    @property
+    def tools(self) -> Mapping[str, Tool]:
+        return MappingProxyType(self._tools)
 
     def specs(self) -> dict[str, ToolSpec]:
         return {

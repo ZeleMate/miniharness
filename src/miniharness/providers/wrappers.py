@@ -16,8 +16,12 @@ import json
 import pickle
 from pathlib import Path
 
+import anthropic
+import openai
+
 from miniharness.errors import BudgetExceeded, MalformedResponseError
 from miniharness.providers.base import Provider
+from miniharness.providers.proxies import LazyProvider
 from miniharness.types import LLMResponse, Message, ToolSpec, Usage
 
 
@@ -57,6 +61,9 @@ class UsageTracker(_Wrapper):
 
 class BudgetGuard(_Wrapper):
     """Refuses to start a call once the tracked spend reaches the limit.
+
+    Strictly a *protection proxy*, not a decorator: it never changes a response,
+    it only decides whether the call happens (DECISIONS.md D72).
 
     Cost is only known after a call, so the last call can overshoot the limit.
     """
@@ -111,7 +118,7 @@ class DiskCache(_Wrapper):
     def __init__(self, inner: Provider, path: Path | str, namespace: str | None = None):
         super().__init__(inner)
         self.path = Path(path)
-        self.namespace = namespace or type(_innermost(inner)).__name__
+        self._namespace = namespace
         self.hits = 0
         self.misses = 0
 
@@ -125,6 +132,13 @@ class DiskCache(_Wrapper):
         self.path.mkdir(parents=True, exist_ok=True)
         file.write_bytes(pickle.dumps(response))
         return response
+
+    @property
+    def namespace(self) -> str:
+        # Resolved on first use: unwrapping a LazyProvider builds it
+        if self._namespace is None:
+            self._namespace = type(_innermost(self.inner)).__name__
+        return self._namespace
 
     def key(self, messages: list[Message], tools: dict[str, ToolSpec]) -> str:
         payload = {
@@ -142,9 +156,13 @@ class DiskCache(_Wrapper):
 
 
 def _innermost(provider: Provider) -> Provider:
-    while isinstance(provider, _Wrapper):
-        provider = provider.inner
-    return provider
+    while True:
+        if isinstance(provider, _Wrapper):
+            provider = provider.inner
+        elif isinstance(provider, LazyProvider):
+            provider = provider.materialize()
+        else:
+            return provider
 
 
 def _transient_errors() -> tuple[type[Exception], ...]:
@@ -153,9 +171,6 @@ def _transient_errors() -> tuple[type[Exception], ...]:
     Deliberately excludes auth, permission, bad-request and not-found errors:
     those are configuration bugs, and falling back would hide them.
     """
-    import anthropic
-    import openai
-
     return (
         anthropic.APIConnectionError,  # includes timeouts
         anthropic.RateLimitError,

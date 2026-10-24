@@ -7,6 +7,7 @@
     uv run examples/hello.py --cache --budget 0.01
     uv run examples/hello.py --yes "Write a haiku to haiku.txt"    # approve file writes
     uv run examples/hello.py -m anthropic:claude-haiku-5-5 --fallback openrouter
+    uv run examples/hello.py --read-only "Write a haiku to haiku.txt"  # model can't see write_file
 """
 
 import argparse
@@ -26,6 +27,7 @@ from miniharness.providers import (
     UsageTracker,
     available_providers,
     create_provider,
+    lazy_provider,
 )
 from miniharness.tools import (
     AllowReadOnly,
@@ -33,6 +35,7 @@ from miniharness.tools import (
     MaxCalls,
     PolicyChain,
     Toolbox,
+    ToolboxView,
     default_tools,
 )
 from miniharness.types import ToolCall
@@ -56,14 +59,16 @@ def main() -> None:
     parser.add_argument("--budget", type=float, default=0.05, help="stop after spending this many USD")
     parser.add_argument("--cache", action="store_true", help="replay identical requests from .cache/llm")
     parser.add_argument("--fallback", help="provider[:model] to use if the main one fails or refuses")
+    parser.add_argument("--read-only", action="store_true", help="hide tools that change anything")
     parser.add_argument("--yes", action="store_true", help="approve every tool call that asks")
     parser.add_argument("--rewind", action="store_true", help="undo all file changes after the run")
     parser.add_argument("task", nargs="?", default="What is (17 * 23) + 4? Also, what time is it in UTC?")
     args = parser.parse_args()
 
-    base = create_provider(args.model)
+    base = create_provider(args.model)  # built now: a bad config fails at startup
     if args.fallback:
-        base = FallbackChain([base, create_provider(args.fallback)])
+        # Lazy: the backup is only built (and its key only needed) if the main one fails
+        base = FallbackChain([base, lazy_provider(args.fallback)])
     tracker = UsageTracker(base)
     provider = Retry(BudgetGuard(tracker, limit_usd=args.budget))
     if args.cache:
@@ -81,7 +86,8 @@ def main() -> None:
         approver=(lambda call: True) if args.yes else terminal_approver,
     )
     toolbox = Toolbox(default_tools(workspace), policy=policy)
-    agent = Agent(provider=provider, system_prompt=system_prompt, tools=toolbox)
+    tools = ToolboxView.read_only(toolbox) if args.read_only else toolbox
+    agent = Agent(provider=provider, system_prompt=system_prompt, tools=tools)
     print(f"[{type(base).__name__} / {provider.model}]")
     answer = agent.run(args.task)
 

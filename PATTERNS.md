@@ -159,3 +159,24 @@ One entry per pattern, written when you apply it. Template:
 - **Try it:** write a `DenyPaths` policy that blocks `write_file` outside a `notes/`
   folder. Where in the chain does it go, and why?
 - **Your notes:**
+
+---
+
+## Proxy (stage 8)
+
+- **Problem:** (1) building a provider needs its API key and client up front, even for a
+  fallback that's never used; (2) some agents should only be able to *see* some tools.
+- **Shape:**
+  - *Virtual proxy:* `LazyProvider` stands in for a provider and builds it on first use.
+  - *Protection proxy:* `ToolboxView` stands in for a Toolbox and exposes only allowed tools.
+    `BudgetGuard` was one all along (DECISIONS.md D72).
+  - *Remote proxy* (not built): a local object whose work happens elsewhere, as MCP tools do.
+- **Proxy vs Decorator:** identical structure, different intent. Ask whether the wrapper
+  changes *what happens* (decorator) or *whether and when it can happen* (proxy).
+- **Live lesson:** with a read-only view, the model never tried to write. It couldn't see
+  the tool, so no denial was needed. Hiding is stronger than refusing.
+- **Smell:** introspection breaks transparency. Code that unwraps wrappers had to learn
+  about the lazy proxy (D73).
+- **Try it:** write a `LoggingToolSet` that records every call. Is that a proxy or a
+  decorator? Then write one that requires approval. What changed?
+- **Your notes:**

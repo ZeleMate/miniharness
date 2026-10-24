@@ -14,7 +14,7 @@ each one in a command object and keeps a history that can be undone.
 from miniharness.errors import StopRun
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider
-from miniharness.tools import Toolbox, default_tools
+from miniharness.tools import Toolbox, ToolSet, default_tools
 from miniharness.types import LLMResponse, Message, ToolCall
 
 class Agent:
@@ -22,7 +22,7 @@ class Agent:
         self,
         provider: Provider,
         system_prompt: str | None = None,
-        tools: Toolbox | None = None,
+        tools: ToolSet | None = None,
         max_steps: int = 10,
     ):
         self.provider = provider

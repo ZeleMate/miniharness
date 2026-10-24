@@ -1,6 +1,8 @@
 import os
 from typing import Any
 
+from openai import OpenAI
+
 from miniharness.adapters.openai_chat import OpenAIChatAdapter
 from miniharness.providers.registry import register_provider
 from miniharness.types import LLMResponse, Message, ToolSpec
@@ -13,8 +15,6 @@ class OpenRouterProvider:
     def __init__(self, model: str | None = None, client: Any = None):
         self.model = model or os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-chat")
         if client is None:
-            from openai import OpenAI
-
             client = OpenAI(base_url=OPENROUTER_BASE_URL, api_key=os.environ["OPENROUTER_API_KEY"])
         self.client = client
         self.adapter = OpenAIChatAdapter()

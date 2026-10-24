@@ -2,6 +2,7 @@ from miniharness.providers.anthropic import AnthropicProvider
 from miniharness.providers.base import Provider
 from miniharness.providers.mock import MockProvider
 from miniharness.providers.openrouter import OpenRouterProvider
+from miniharness.providers.proxies import LazyProvider, lazy_provider
 from miniharness.providers.registry import available_providers, create_provider, register_provider
 from miniharness.providers.wrappers import BudgetGuard, DiskCache, FallbackChain, Retry, UsageTracker
 
@@ -11,6 +12,7 @@ __all__ = [
     "BudgetGuard",
     "DiskCache",
     "FallbackChain",
+    "LazyProvider",
     "MockProvider",
     "OpenRouterProvider",
     "Provider",
@@ -18,5 +20,6 @@ __all__ = [
     "UsageTracker",
     "available_providers",
     "create_provider",
+    "lazy_provider",
     "register_provider",
 ]
