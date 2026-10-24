@@ -249,15 +249,15 @@ One entry per pattern, written when you apply it. Template:
 - **Problem:** delegating work to a sub-agent, such as a cheap read-only researcher, without the
   parent's context filling up with the sub-agent's turns, and without new machinery for
   policies, events or undo.
-- **Shape:**  is a . Its  drives a
-  fresh copy of an agent whose own tools may include more s: a tree.
-- **The Composite operation:**  is computed from the children, recursively. Policies
+- **Shape:** `AgentTool(name, description, prototype_agent)` is a `Tool`. Its `run(task)` drives a
+  fresh copy of an agent whose own tools may include more `AgentTool`s: a tree.
+- **The Composite operation:** `side_effects` is computed from the children, recursively. Policies
   then treat a whole subtree like a single tool (DECISIONS.md D121).
-- **Patterns compose:** Prototype (fresh copies), Proxy ( for read-only sub-agents),
+- **Patterns compose:** Prototype (fresh copies), Proxy (`ToolboxView` for read-only sub-agents),
   Chain of Responsibility (policies decide on the derived property), Observer (one bus, tagged
   with depth).
 - **Harness connection:** Claude Code's sub-agents (the Task tool) are this: an agent exposed to its
   parent as a tool, returning only a summary.
-- **Try it:** give the researcher its own cheaper model ( on the prototype).
+- **Try it:** give the researcher its own cheaper model (`fork(provider=...)` on the prototype).
   Where does the cost show up now, and does the shared budget still apply?
 - **Your notes:**

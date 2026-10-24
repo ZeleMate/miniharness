@@ -39,7 +39,7 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 | `src/miniharness/events.py` | Typed events + `EventBus` (stage 10: Observer) |
 | `src/miniharness/observers.py` | `ConsolePrinter`, `JsonlTracer` |
 | `src/miniharness/prompts.py` | `SystemPromptBuilder` + `default_prompt()` director (stage 4: Builder) |
-| `src/miniharness/tools/` | `Tool` classes, `ToolCommand`, and the `Toolbox` invoker with undo (stage 5: Command); `PolicyChain` permissions (stage 7: Chain of Responsibility); `ToolboxView` (stage 8: Proxy);  (stage 12: Composite) |
+| `src/miniharness/tools/` | `Tool` classes, `ToolCommand`, and the `Toolbox` invoker with undo (stage 5: Command); `PolicyChain` permissions (stage 7: Chain of Responsibility); `ToolboxView` (stage 8: Proxy); `AgentTool` (stage 12: Composite) |
 | `DECISIONS.md` | Architecture decision log: options, trade-offs, open questions |
 | `PATTERNS.md` | Your learning journal |
 
@@ -60,7 +60,7 @@ Only add a pattern once you feel the pain it solves.
 | 9 | Circuit breaker; agent lifecycle with `step()` | State ✅ |
 | 10 | Typed events on a shared bus; live console + JSONL trace | Observer ✅ |
 | 11 | Checkpoint, rewind (with files), save/resume, fork | Memento, Prototype ✅ |
-| 12 | Sub-agents as tools (); trees with derived side effects | Composite ✅ |
+| 12 | Sub-agents as tools (`AgentTool`); trees with derived side effects | Composite ✅ |
 | 13 | Coordinator routing between agents | Mediator |
 | 14 | Cost/HTML/JSON over the trace tree | Visitor |
 | 15 | Streaming tokens and events | Iterator |
