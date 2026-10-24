@@ -19,7 +19,7 @@ from pathlib import Path
 import anthropic
 import openai
 
-from miniharness.errors import BudgetExceeded, MalformedResponseError
+from miniharness.errors import BudgetExceeded, CircuitOpenError, MalformedResponseError
 from miniharness.providers.base import Provider
 from miniharness.providers.proxies import LazyProvider
 from miniharness.types import LLMResponse, Message, ToolSpec, Usage
@@ -165,7 +165,7 @@ def _innermost(provider: Provider) -> Provider:
             return provider
 
 
-def _transient_errors() -> tuple[type[Exception], ...]:
+def transient_errors() -> tuple[type[Exception], ...]:
     """Errors that mean "this provider can't answer right now".
 
     Deliberately excludes auth, permission, bad-request and not-found errors:
@@ -179,6 +179,7 @@ def _transient_errors() -> tuple[type[Exception], ...]:
         openai.RateLimitError,
         openai.InternalServerError,
         MalformedResponseError,
+        CircuitOpenError,  # an open breaker: skip this provider
     )
 
 
@@ -199,7 +200,7 @@ class FallbackChain:
         if not providers:
             raise ValueError("FallbackChain needs at least one provider")
         self.providers = providers
-        self.on = on if on is not None else _transient_errors()
+        self.on = on if on is not None else transient_errors()
         self.on_refusal = on_refusal
         self.served_by: Provider | None = None
         self.failures: list[tuple[Provider, str]] = []  # why each link passed

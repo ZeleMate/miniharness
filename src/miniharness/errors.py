@@ -26,3 +26,7 @@ class StopRun(Exception):
 
 class BudgetExceeded(StopRun):
     reason = "budget"
+
+
+class CircuitOpenError(Exception):
+    """A circuit breaker is open: the provider is skipped without being called."""

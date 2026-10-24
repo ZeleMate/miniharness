@@ -491,7 +491,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   as a normal `stop_reason="refusal"`.
 
 ### D65. No circuit breaker: every call tries the failing provider first again
-**Status:** open (observed live)
+**Status:** superseded by D79 (stage 9)
 - In the fallback run, each of the agent's two model calls hit the broken provider
   before falling back, which costs latency and money on every turn.
 - **Revisit when:** stage 9 (State). A circuit breaker (closed → open → half-open) is a
@@ -587,3 +587,92 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 **Status:** accepted (made during implementation)
 - Two threads calling it at the same moment could both build the real provider.
   Nothing in the harness is concurrent today. A lock fixes it if that changes (D39).
+
+---
+
+## Stage 9: State
+
+### D79. Two state machines: a circuit breaker and the agent lifecycle (your call)
+**Status:** accepted
+- **Breaker:** fixes D65. Observed live, an unreachable primary was tried once, the
+  breaker opened, and the next two turns skipped it instantly with no network call.
+- **Lifecycle:** partly speculative, since `run()` worked fine as a loop. It earns its keep
+  in stage 10 (each transition is a natural event to observe) and stage 11 (state boundaries
+  are safe points to checkpoint and resume).
+
+### D80. One class per state, GoF style (your call)
+**Status:** accepted
+- **Options:** state classes · an Enum plus a transition table.
+- **Why:** each state's behavior lives in one place, and no method branches on "which
+  state am I in?". A transition is assigning a new state object.
+- **Cost:** more classes. For a two-state toggle, an Enum is simpler. The pattern pays off
+  when states *behave* differently, as the breaker's three do.
+
+### D81. An open breaker raises `CircuitOpenError`, which counts as transient (your call)
+**Status:** accepted
+- `FallbackChain`'s default errors include it, so an open breaker means "skip me".
+
+### D82. Only transient errors trip the breaker
+**Status:** accepted (made during implementation)
+- A bad key or an unknown model passes straight through without counting, which is
+  consistent with D63. Waiting won't fix a configuration bug, so opening the circuit
+  would only delay the real error.
+
+### D83. The failure count is state-local data owned by `Closed`
+**Status:** accepted (made during implementation)
+- **Why:** entering `Closed` creates a fresh object, so the count resets automatically.
+  No "remember to reset the counter" code exists anywhere. State objects can carry the
+  data that only matters in that state, like `Open.opened_at` and `ActingOnTools.calls`.
+- **Trigger:** N *consecutive* failures, not a failure rate over a time window. Rates
+  are more robust under steady traffic, but an agent makes few calls.
+
+### D84. The breaker takes an injected clock, defaulting to `time.monotonic`
+**Status:** accepted (made during implementation)
+- Tests drive time with a fake clock instead of sleeping. A monotonic clock is immune to
+  wall-clock changes (NTP, daylight saving), so cooldowns can't jump.
+
+### D85. The circuit breaker is a protection proxy whose behavior is a state machine
+**Status:** accepted (made during implementation)
+- Patterns compose: by *intent* it's a proxy (it controls whether the provider is reached),
+  and by *implementation* it's State. It subclasses the wrapper base, so unwrapping (D73)
+  and `.model` work.
+
+### D86. `Open` → `HalfOpen` happens lazily, on the next call after the cooldown
+**Status:** accepted (made during implementation)
+- There's no timer thread. The cost is that `breaker.state` still reads "open" after the
+  cooldown until something calls it. A passive transition is simpler, and nobody
+  watches the state between calls.
+
+### D87. `HalfOpen` lets one trial through; not thread-safe
+**Status:** accepted (made during implementation)
+- With concurrent callers, all of them could pass in half-open. It's fine while the harness
+  is sequential (D39, D78).
+
+### D88. A refusal counts as success for the breaker
+**Status:** accepted (made during implementation)
+- A provider that refuses is healthy, just unwilling. Whether to try another provider is the
+  fallback's decision (D64), not the breaker's.
+
+### D89. Lifecycle states call the Agent's Template Method hooks
+**Status:** accepted (made during implementation)
+- `Thinking.step()` calls `agent.think()` and `agent.finish()`, so subclasses that override a
+  hook keep working (tested with `Shouty`). State decides *when* a step happens; Template
+  Method decides *how* it's done.
+
+### D90. Exceeding `max_steps` still raises `RuntimeError`
+**Status:** open (made during implementation)
+- A `Stopped("max_steps")` state would be more consistent with budget stops, but it changes
+  what callers see (a returned string instead of an exception). The refactor kept behavior
+  identical, and all 106 earlier tests passed unchanged.
+
+### D91. No `AwaitingHuman` state: approval stays synchronous inside the Toolbox
+**Status:** open (made during implementation)
+- The approver blocks inside `Toolbox.execute()`. A real `AwaitingHuman` state would mean
+  *pausing* the run, returning control, and resuming when someone answers, possibly hours
+  later or in another process.
+- **Revisit when:** stage 11 (Memento) can persist a paused run. That's the
+  missing piece for asynchronous approval.
+
+### D92. `start()` works from `Idle` or a finished state; it refuses while running
+**Status:** accepted (made during implementation)
+- Restarting resets messages and the model-call count. The Toolbox history is *not* reset (D40).

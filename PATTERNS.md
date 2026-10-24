@@ -180,3 +180,24 @@ One entry per pattern, written when you apply it. Template:
 - **Try it:** write a `LoggingToolSet` that records every call. Is that a proxy or a
   decorator? Then write one that requires approval. What changed?
 - **Your notes:**
+
+---
+
+## State (stage 9)
+
+- **Problem:** (1) the fallback retried a dead provider on every turn (D65). The fix,
+  a circuit breaker, behaves completely differently depending on its history. (2) The
+  agent's loop had implicit phases you couldn't see or step through.
+- **Shape:** each state is an object with its own `call()`/`step()` that returns or sets the
+  next state. `CircuitBreaker`: `Closed → Open → HalfOpen → Closed/Open`. Agent:
+  `Idle → Thinking ⇄ ActingOnTools → Done/Stopped`.
+- **State vs Strategy:** both swap an object to change behavior. With Strategy, the *client*
+  picks the object and it rarely changes. With State, the *object changes itself* as things
+  happen.
+- **State-local data:** `Closed` owns the failure count and `Open` owns `opened_at`, so
+  entering a state resets its data for free (DECISIONS.md D83).
+- **Patterns compose:** the breaker is a Proxy by intent and State by implementation.
+  The lifecycle states call Template Method hooks.
+- **Try it:** add a `Paused` agent state that `step()` won't leave until `resume()` is
+  called. What would it need to survive a process restart? (That's stage 11.)
+- **Your notes:**

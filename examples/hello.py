@@ -8,6 +8,7 @@
     uv run examples/hello.py --yes "Write a haiku to haiku.txt"    # approve file writes
     uv run examples/hello.py -m anthropic:claude-haiku-5-5 --fallback openrouter
     uv run examples/hello.py --read-only "Write a haiku to haiku.txt"  # model can't see write_file
+    uv run examples/hello.py --steps                                    # print each lifecycle state
 """
 
 import argparse
@@ -21,6 +22,7 @@ from miniharness import Agent
 from miniharness.prompts import default_prompt
 from miniharness.providers import (
     BudgetGuard,
+    CircuitBreaker,
     DiskCache,
     FallbackChain,
     Retry,
@@ -59,6 +61,7 @@ def main() -> None:
     parser.add_argument("--budget", type=float, default=0.05, help="stop after spending this many USD")
     parser.add_argument("--cache", action="store_true", help="replay identical requests from .cache/llm")
     parser.add_argument("--fallback", help="provider[:model] to use if the main one fails or refuses")
+    parser.add_argument("--steps", action="store_true", help="print each lifecycle state")
     parser.add_argument("--read-only", action="store_true", help="hide tools that change anything")
     parser.add_argument("--yes", action="store_true", help="approve every tool call that asks")
     parser.add_argument("--rewind", action="store_true", help="undo all file changes after the run")
@@ -68,7 +71,8 @@ def main() -> None:
     base = create_provider(args.model)  # built now: a bad config fails at startup
     if args.fallback:
         # Lazy: the backup is only built (and its key only needed) if the main one fails
-        base = FallbackChain([base, lazy_provider(args.fallback)])
+        # The breaker stops retrying a failing main provider on every turn
+        base = FallbackChain([CircuitBreaker(base), lazy_provider(args.fallback)])
     tracker = UsageTracker(base)
     provider = Retry(BudgetGuard(tracker, limit_usd=args.budget))
     if args.cache:
@@ -89,7 +93,13 @@ def main() -> None:
     tools = ToolboxView.read_only(toolbox) if args.read_only else toolbox
     agent = Agent(provider=provider, system_prompt=system_prompt, tools=tools)
     print(f"[{type(base).__name__} / {provider.model}]")
-    answer = agent.run(args.task)
+    if args.steps:
+        print(f"  state: {agent.start(args.task).name}")
+        while not agent.done:
+            print(f"  state: {agent.step().name}")
+        answer = agent.state.answer
+    else:
+        answer = agent.run(args.task)
 
     for m in agent.messages[2:]:
         if m.role == "tool":

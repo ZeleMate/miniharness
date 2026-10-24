@@ -1,5 +1,6 @@
 from miniharness.providers.anthropic import AnthropicProvider
 from miniharness.providers.base import Provider
+from miniharness.providers.breaker import CircuitBreaker
 from miniharness.providers.mock import MockProvider
 from miniharness.providers.openrouter import OpenRouterProvider
 from miniharness.providers.proxies import LazyProvider, lazy_provider
@@ -10,6 +11,7 @@ from miniharness.providers.wrappers import BudgetGuard, DiskCache, FallbackChain
 __all__ = [
     "AnthropicProvider",
     "BudgetGuard",
+    "CircuitBreaker",
     "DiskCache",
     "FallbackChain",
     "LazyProvider",

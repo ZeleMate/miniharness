@@ -9,13 +9,17 @@ The agent never knows which one it is talking to.
 
 Stage 5 (Command): tool calls run through an injected `Toolbox`, which wraps
 each one in a command object and keeps a history that can be undone.
+
+Stage 9 (State): the loop is a state machine (see lifecycle.py). `step()`
+advances one transition; `run()` is `start()` plus stepping until done.
 """
 
-from miniharness.errors import StopRun
+from miniharness.lifecycle import AgentState, Idle, Thinking
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider
 from miniharness.tools import Toolbox, ToolSet, default_tools
 from miniharness.types import LLMResponse, Message, ToolCall
+
 
 class Agent:
     def __init__(
@@ -30,21 +34,34 @@ class Agent:
         self.system_prompt = system_prompt if system_prompt is not None else default_prompt().build()
         self.max_steps = max_steps
         self.messages: list[Message] = []
+        self.state: AgentState = Idle()
+        self.model_calls = 0
+
+    # --- lifecycle -----------------------------------------------------------
+
+    def start(self, task: str) -> AgentState:
+        if not isinstance(self.state, Idle) and not self.state.terminal:
+            raise RuntimeError(f"Agent is already running ({self.state.name})")
+        self.messages = self.initial_messages(task)
+        self.model_calls = 0
+        self.state = Thinking()
+        return self.state
+
+    def step(self) -> AgentState:
+        self.state = self.state.step(self)
+        return self.state
+
+    @property
+    def done(self) -> bool:
+        return self.state.terminal
 
     # --- the template method -------------------------------------------------
 
     def run(self, task: str) -> str:
-        self.messages = self.initial_messages(task)
-        for _ in range(self.max_steps):
-            try:
-                response = self.think(self.messages)
-            except StopRun as e:
-                return f"[stopped: {e.reason}] {e}"
-            self.messages.append(response.message)
-            if response.stop_reason != "tool_calls":
-                return self.finish(response)
-            self.messages.extend(self.act(response.message.tool_calls))
-        raise RuntimeError(f"Agent did not finish within {self.max_steps} steps")
+        self.start(task)
+        while not self.done:
+            self.step()
+        return self.state.answer
 
     # --- hooks ---------------------------------------------------------------
 
