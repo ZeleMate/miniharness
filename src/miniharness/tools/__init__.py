@@ -3,6 +3,18 @@ from pathlib import Path
 from miniharness.tools.base import IrreversibleError, Tool, ToolCommand, ToolResult
 from miniharness.tools.basic import Add, CurrentTime, Multiply
 from miniharness.tools.files import ReadFile, WriteFile
+from miniharness.tools.policy import (
+    AllowReadOnly,
+    AllowTools,
+    AskBeforeSideEffects,
+    Decision,
+    DenyTools,
+    MaxCalls,
+    Policy,
+    PolicyChain,
+    Verdict,
+    default_policy,
+)
 from miniharness.tools.toolbox import Toolbox
 
 
@@ -16,14 +28,24 @@ def default_tools(workspace: Path | None = None) -> list[Tool]:
 
 __all__ = [
     "Add",
+    "AllowReadOnly",
+    "AllowTools",
+    "AskBeforeSideEffects",
     "CurrentTime",
+    "Decision",
+    "DenyTools",
     "IrreversibleError",
+    "MaxCalls",
     "Multiply",
+    "Policy",
+    "PolicyChain",
     "ReadFile",
     "Tool",
     "ToolCommand",
     "ToolResult",
     "Toolbox",
+    "Verdict",
     "WriteFile",
+    "default_policy",
     "default_tools",
 ]

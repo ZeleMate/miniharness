@@ -137,3 +137,25 @@ One entry per pattern, written when you apply it. Template:
 - **Try it:** write a `Timing` wrapper that records the latency of each call. Where in the
   stack should it go to measure network time only, and where to include the cache?
 - **Your notes:**
+
+---
+
+## Chain of Responsibility (stage 7)
+
+- **Problem:** several independent rules decide whether a tool call may run
+  (deny list, quota, read-only, ask a human). Hard-coding them as one `if` ladder
+  in the Toolbox mixes every rule together.
+- **Shape:** `PolicyChain([DenyTools, MaxCalls, AllowReadOnly, AskBeforeSideEffects])`.
+  Each policy returns a `Decision` or `None`, and the first decision wins.
+  `FallbackChain([anthropic, openrouter])` does the same for providers: the first
+  one that answers wins.
+- **CoR vs Decorator:** they look alike, since both are sequences of objects with
+  the same interface. In a Decorator, every layer runs. In a Chain, the request stops
+  at the first handler that takes it.
+- **Live lesson:** the fallback chain hid an invalid API key (DECISIONS.md D63). A chain
+  must be precise about what counts as "not mine, pass it on".
+- **Harness connection:** Claude Code's permission rules (deny → ask → allow) are a policy
+  chain. OpenRouter's `models: [...]` fallback is the same pattern running on the server.
+- **Try it:** write a `DenyPaths` policy that blocks `write_file` outside a `notes/`
+  folder. Where in the chain does it go, and why?
+- **Your notes:**

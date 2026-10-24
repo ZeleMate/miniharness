@@ -1,17 +1,21 @@
 """Invoker: runs tool calls as commands and keeps their history."""
 
 from miniharness.tools.base import IrreversibleError, Tool, ToolCommand
+from miniharness.tools.policy import Decision, PolicyChain, Verdict, default_policy
 from miniharness.types import ToolCall, ToolSpec
 
 
 class Toolbox:
-    def __init__(self, tools: list[Tool]):
+    def __init__(self, tools: list[Tool], policy: PolicyChain | None = None):
         self._tools: dict[str, Tool] = {}
         for tool in tools:
             if tool.name in self._tools:
                 raise ValueError(f"Duplicate tool name {tool.name!r}")
             self._tools[tool.name] = tool
+        # Default: read-only tools run, side effects are denied (no approver)
+        self.policy = policy if policy is not None else default_policy()
         self.history: list[ToolCommand] = []
+        self.denied: list[tuple[ToolCall, Decision]] = []
 
     def specs(self) -> dict[str, ToolSpec]:
         return {
@@ -24,6 +28,10 @@ class Toolbox:
         tool = self._tools.get(call.name)
         if tool is None:
             return f"Error: unknown tool {call.name!r}"
+        decision = self.policy.decide(call, tool)
+        if decision.verdict is not Verdict.ALLOW:
+            self.denied.append((call, decision))
+            return f"Permission denied: {decision.reason}"
         command = ToolCommand(tool, call)
         try:
             result = command.execute()

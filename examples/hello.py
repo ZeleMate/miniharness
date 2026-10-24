@@ -5,6 +5,8 @@
     uv run examples/hello.py -m openrouter:qwen/qwen3-coder "your task"
     uv run examples/hello.py --rewind "Write a haiku about undo to haiku.txt"
     uv run examples/hello.py --cache --budget 0.01
+    uv run examples/hello.py --yes "Write a haiku to haiku.txt"    # approve file writes
+    uv run examples/hello.py -m anthropic:claude-haiku-5-5 --fallback openrouter
 """
 
 import argparse
@@ -19,12 +21,29 @@ from miniharness.prompts import default_prompt
 from miniharness.providers import (
     BudgetGuard,
     DiskCache,
+    FallbackChain,
     Retry,
     UsageTracker,
     available_providers,
     create_provider,
 )
-from miniharness.tools import Toolbox, default_tools
+from miniharness.tools import (
+    AllowReadOnly,
+    AskBeforeSideEffects,
+    MaxCalls,
+    PolicyChain,
+    Toolbox,
+    default_tools,
+)
+from miniharness.types import ToolCall
+
+
+def terminal_approver(call: ToolCall) -> bool:
+    try:
+        answer = input(f"  allow {call.name}({call.arguments})? [y/N] ")
+    except EOFError:  # no terminal attached: treat as "no"
+        return False
+    return answer.strip().lower() in ("y", "yes")
 
 
 def main() -> None:
@@ -36,11 +55,15 @@ def main() -> None:
     )
     parser.add_argument("--budget", type=float, default=0.05, help="stop after spending this many USD")
     parser.add_argument("--cache", action="store_true", help="replay identical requests from .cache/llm")
+    parser.add_argument("--fallback", help="provider[:model] to use if the main one fails or refuses")
+    parser.add_argument("--yes", action="store_true", help="approve every tool call that asks")
     parser.add_argument("--rewind", action="store_true", help="undo all file changes after the run")
     parser.add_argument("task", nargs="?", default="What is (17 * 23) + 4? Also, what time is it in UTC?")
     args = parser.parse_args()
 
     base = create_provider(args.model)
+    if args.fallback:
+        base = FallbackChain([base, create_provider(args.fallback)])
     tracker = UsageTracker(base)
     provider = Retry(BudgetGuard(tracker, limit_usd=args.budget))
     if args.cache:
@@ -53,7 +76,11 @@ def main() -> None:
     )
     workspace = Path("workspace")
     workspace.mkdir(exist_ok=True)
-    toolbox = Toolbox(default_tools(workspace))
+    policy = PolicyChain(
+        [MaxCalls("write_file", 5), AllowReadOnly(), AskBeforeSideEffects()],
+        approver=(lambda call: True) if args.yes else terminal_approver,
+    )
+    toolbox = Toolbox(default_tools(workspace), policy=policy)
     agent = Agent(provider=provider, system_prompt=system_prompt, tools=toolbox)
     print(f"[{type(base).__name__} / {provider.model}]")
     answer = agent.run(args.task)
@@ -64,6 +91,12 @@ def main() -> None:
         for tc in m.tool_calls:
             print(f"  call {tc.name}({tc.arguments})")
     print(f"\n{answer}")
+
+    for call, decision in toolbox.denied:
+        print(f"  denied {call.name}: {decision.reason} (by {decision.policy})")
+    if isinstance(base, FallbackChain) and base.failures:
+        for provider, why in base.failures:
+            print(f"  fell back from {provider.model}: {why}")
 
     total = tracker.total
     cost = "unknown" if total.cost_usd is None else f"${total.cost_usd:.6f}"

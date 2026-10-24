@@ -8,6 +8,7 @@ from miniharness.providers import (
     AnthropicProvider,
     BudgetGuard,
     DiskCache,
+    FallbackChain,
     MockProvider,
     OpenRouterProvider,
     Retry,
@@ -230,3 +231,73 @@ def test_invalid_tool_json_raises_malformed_with_usage():
     with pytest.raises(MalformedResponseError) as excinfo:
         OpenRouterProvider("m", client).complete(HI, {})
     assert excinfo.value.usage.cost_usd == 6.05e-06
+
+
+# --- FallbackChain -------------------------------------------------------------------------
+
+
+def refusal():
+    return LLMResponse(Message(role="assistant", content="I can't help with that."), "refusal", Usage(1, 1, 0.0))
+
+
+def test_fallback_uses_the_first_provider_that_answers():
+    first, second = MockProvider([ConnectionError("down")]), MockProvider([reply("from second")])
+    chain = FallbackChain([first, second], on=(ConnectionError,))
+
+    assert chain.complete(HI, {}).message.content == "from second"
+    assert chain.served_by is second
+    assert chain.failures == [(first, "ConnectionError: down")]
+
+
+def test_fallback_on_refusal():
+    second = MockProvider([reply("ok")])
+    chain = FallbackChain([MockProvider([refusal()]), second], on=())
+
+    assert chain.complete(HI, {}).message.content == "ok"
+    assert chain.served_by is second
+
+
+def test_last_refusal_is_returned_not_raised():
+    chain = FallbackChain([MockProvider([refusal()])], on=())
+
+    assert chain.complete(HI, {}).stop_reason == "refusal"
+
+
+def test_last_error_propagates():
+    chain = FallbackChain([MockProvider([ConnectionError("a")]), MockProvider([ConnectionError("b")])], on=(ConnectionError,))
+
+    with pytest.raises(ConnectionError, match="b"):
+        chain.complete(HI, {})
+
+
+def test_fallback_never_swallows_stop_run():
+    second = MockProvider([reply()])
+    chain = FallbackChain([MockProvider([BudgetExceeded("over")]), second])
+
+    with pytest.raises(BudgetExceeded):
+        chain.complete(HI, {})
+    assert second.calls == []
+
+
+def test_fallback_does_not_hide_programming_errors():
+    chain = FallbackChain([MockProvider([KeyError("bug")]), MockProvider([reply()])])
+
+    with pytest.raises(KeyError):
+        chain.complete(HI, {})
+
+
+def test_default_errors_are_transient_only():
+    import anthropic
+    import openai
+
+    on = FallbackChain([MockProvider()]).on
+
+    for sdk in (anthropic, openai):
+        assert issubclass(sdk.RateLimitError, on)
+        assert issubclass(sdk.InternalServerError, on)
+        assert issubclass(sdk.APITimeoutError, on)
+        # Configuration bugs must surface, not fall back
+        assert not issubclass(sdk.AuthenticationError, on)
+        assert not issubclass(sdk.BadRequestError, on)
+        assert not issubclass(sdk.NotFoundError, on)
+    assert issubclass(MalformedResponseError, on)

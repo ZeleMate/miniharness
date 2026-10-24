@@ -422,3 +422,89 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 - **Why:** the order matters (D46) and should be visible where it's built.
 - **Revisit when:** the same stack is built in more than one place. A helper
   would then be a small Director, like `default_prompt()` in stage 4.
+
+---
+
+## Stage 7: Chain of Responsibility
+
+### D55. Two chains: tool-call policy and model fallback (your call)
+**Status:** accepted
+- **CoR vs Decorator (stage 6):** a decorator *always* passes the call on and adds
+  behavior along the way. In a chain, each link may *handle* the request and stop it.
+  The question a chain answers is "who deals with this?", not "what else happens?".
+
+### D56. A policy chain is a list where the first verdict wins (your call)
+**Status:** accepted
+- **Options:** a list of `check() -> Decision | None` · GoF linked handlers with `next`.
+- **Why:** policies don't know about each other, reordering means editing a list, and
+  forgetting to call `next` (a classic bug in the linked form) can't happen. It's the
+  same intent with a different structure.
+
+### D57. `ASK` is a verdict, resolved by the chain's injected approver
+**Status:** accepted (made during implementation; refines your approval choice)
+- **Why:** it separates *deciding to ask* (a policy) from *how to ask* (terminal, Slack,
+  web UI). The policies stay pure, and the approver is swappable and easy to test.
+- With no approver, `ASK` becomes `DENY`, so unattended runs fail closed.
+
+### D58. When no policy decides, deny (your call)
+**Status:** accepted. This is consistent with D37 (read-only default toolbox) and D48
+(fail-closed budget).
+- **Behavior change:** `Toolbox(default_tools(workspace))` with no policy can no
+  longer write files. It now needs an approver or an explicit policy. The execution
+  tests use `PolicyChain.allow_all()`, so their intent is visible.
+
+### D59. Approver is an injected callback; a denial is returned to the model as text (your call)
+**Status:** accepted
+- Observed live: after a declined `write_file`, the model explained that it lacked
+  permission and asked the user how to proceed. The run degraded gracefully.
+
+### D60. Policy is checked in `Toolbox.execute`, before the command is created
+**Status:** accepted (made during implementation)
+- **Why:** the invoker is the single gate every call passes through. Denied calls
+  never become commands, so they're kept apart in `toolbox.denied` and aren't in
+  the undo history.
+
+### D61. Every `Decision` names its reason and the policy that made it
+**Status:** accepted (made during implementation)
+- **Why:** "why was this allowed?" is the first question when a permission system
+  surprises you. The example prints `denied write_file: ... (by AskBeforeSideEffects)`.
+
+### D62. `MaxCalls` is a quota, not a rate limit
+**Status:** accepted (made during implementation; renamed from the preview's `RateLimit`)
+- It counts calls over the chain's lifetime, with no time window. Naming it honestly
+  avoids implying behavior it doesn't have.
+- A call is counted when it passes `MaxCalls`, even if a later policy denies it.
+
+### D63. Fallback only on *transient* errors, never on configuration errors
+**Status:** accepted (found in a live run)
+- **What happened:** the first version fell back on any SDK `APIError`. A live run
+  with an invalid Anthropic key got `401 invalid x-api-key`, and the chain quietly
+  answered with DeepSeek. That hid a broken key and spent money on another model.
+- **Now:** fall back on connection errors, timeouts, rate limits, 5xx errors and
+  malformed replies. Auth, permission, bad-request and not-found errors propagate.
+- **Lesson:** decide which failures mean "try someone else" and which mean "you
+  have a bug". A fallback that catches everything is a bug-hider.
+
+### D64. Fallback on refusal; the last link's refusal is returned, not raised
+**Status:** accepted (made during implementation)
+- A refusal is an answer, not an error, so if no one else can help, the caller sees it
+  as a normal `stop_reason="refusal"`.
+
+### D65. No circuit breaker: every call tries the failing provider first again
+**Status:** open (observed live)
+- In the fallback run, each of the agent's two model calls hit the broken provider
+  before falling back, which costs latency and money on every turn.
+- **Revisit when:** stage 9 (State). A circuit breaker (closed → open → half-open) is a
+  textbook State machine: after N failures, skip the provider for a cooldown period.
+
+### D66. Usage of a refusal swallowed by the fallback is invisible to an outer tracker
+**Status:** open (made during implementation)
+- With `UsageTracker(FallbackChain([...]))`, the tracker only sees the response that
+  was returned. A refused response was still billed, but nobody counts it.
+- **Fix options:** a tracker inside each link, or the chain reporting swallowed usage.
+
+### D67. After a fallback, one conversation mixes providers
+**Status:** open (made during implementation)
+- Turn 1 may come from Anthropic (with `raw`) and turn 2 from OpenRouter (without it).
+  Both adapters tolerate this today, but it's the D8 leak in action: the conversation
+  type doesn't record which provider produced which turn.

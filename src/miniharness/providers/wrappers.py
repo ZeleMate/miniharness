@@ -145,3 +145,67 @@ def _innermost(provider: Provider) -> Provider:
     while isinstance(provider, _Wrapper):
         provider = provider.inner
     return provider
+
+
+def _transient_errors() -> tuple[type[Exception], ...]:
+    """Errors that mean "this provider can't answer right now".
+
+    Deliberately excludes auth, permission, bad-request and not-found errors:
+    those are configuration bugs, and falling back would hide them.
+    """
+    import anthropic
+    import openai
+
+    return (
+        anthropic.APIConnectionError,  # includes timeouts
+        anthropic.RateLimitError,
+        anthropic.InternalServerError,  # 5xx, including overloaded
+        openai.APIConnectionError,
+        openai.RateLimitError,
+        openai.InternalServerError,
+        MalformedResponseError,
+    )
+
+
+class FallbackChain:
+    """Chain of Responsibility over providers: the first one that answers wins.
+
+    A provider passes the request on by failing with a transient error or by
+    refusing. Configuration errors (bad key, unknown model) and StopRun (e.g. a
+    budget) are never swallowed.
+    """
+
+    def __init__(
+        self,
+        providers: list[Provider],
+        on: tuple[type[Exception], ...] | None = None,
+        on_refusal: bool = True,
+    ):
+        if not providers:
+            raise ValueError("FallbackChain needs at least one provider")
+        self.providers = providers
+        self.on = on if on is not None else _transient_errors()
+        self.on_refusal = on_refusal
+        self.served_by: Provider | None = None
+        self.failures: list[tuple[Provider, str]] = []  # why each link passed
+
+    @property
+    def model(self) -> str:
+        return self.providers[0].model
+
+    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
+        last = len(self.providers) - 1
+        for i, provider in enumerate(self.providers):
+            try:
+                response = provider.complete(messages, tools)
+            except self.on as e:
+                self.failures.append((provider, f"{type(e).__name__}: {e}"))
+                if i == last:
+                    raise
+                continue
+            if self.on_refusal and response.stop_reason == "refusal" and i < last:
+                self.failures.append((provider, "refusal"))
+                continue
+            self.served_by = provider
+            return response
+        raise AssertionError("unreachable")

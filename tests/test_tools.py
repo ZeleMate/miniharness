@@ -3,6 +3,7 @@ import pytest
 from miniharness.tools import (
     Add,
     IrreversibleError,
+    PolicyChain,
     ReadFile,
     Tool,
     Toolbox,
@@ -20,7 +21,8 @@ def call(name, **arguments):
 
 @pytest.fixture
 def box(tmp_path):
-    return Toolbox(default_tools(tmp_path))
+    # These tests exercise execution and undo; policy has its own tests
+    return Toolbox(default_tools(tmp_path), policy=PolicyChain.allow_all())
 
 
 class SendEmail(Tool):
@@ -114,7 +116,7 @@ def test_undo_all_rewinds_newest_first(box, tmp_path):
 
 
 def test_undo_stops_at_an_irreversible_side_effect(tmp_path):
-    box = Toolbox([WriteFile(tmp_path), SendEmail()])
+    box = Toolbox([WriteFile(tmp_path), SendEmail()], policy=PolicyChain.allow_all())
     box.execute(call("write_file", path="a.txt", content="x"))
     box.execute(call("send_email", to="boss@example.com"))
 
@@ -157,7 +159,7 @@ def test_symlinks_pointing_outside_are_rejected(tmp_path):
     (tmp_path / "secret.txt").write_text("secret")
     (workspace / "link.txt").symlink_to(tmp_path / "secret.txt")
 
-    result = Toolbox([ReadFile(workspace)]).execute(call("read_file", path="link.txt"))
+    result = Toolbox([ReadFile(workspace)], policy=PolicyChain.allow_all()).execute(call("read_file", path="link.txt"))
 
     assert result.startswith("Error: PermissionError")
 
