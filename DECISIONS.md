@@ -851,3 +851,96 @@ from `agent.messages` afterwards.
 - A run could stop in `ActingOnTools` when approval is needed, save, exit, and resume after a
   human approves, even in another process. The missing piece is an `AwaitingApproval` state
   and an approver that says "later" instead of yes or no.
+
+---
+
+## Stage 12: Composite
+
+### D119. A sub-agent is an `AgentTool`, a regular `Tool` (your call)
+**Status:** accepted
+- **Why:** the Toolbox, policies, events and history all work unchanged, because the parent
+  can't tell a sub-agent from `add`. That uniformity *is* the Composite pattern: leaves (tools)
+  and composites (agents with tools) share one interface, so trees build naturally.
+- Observed live: the parent's context grew only by the researcher's final answer.
+
+### D120. Each call runs a fresh copy of a prototype agent (your call)
+**Status:** accepted
+- `copy.copy(prototype)` (stage 11's Prototype) gives the same class and configuration with an
+  empty conversation. The prototype itself never runs. Calls can't influence each other, and
+  context stays small, which is the main reason harnesses use sub-agents.
+
+### D121. `AgentTool.side_effects` is derived from its sub-agent's tools, recursively (your call)
+**Status:** accepted
+- This is the classic Composite *operation*: a property of the whole computed from its parts.
+  A read-only researcher is read-only, so `AllowReadOnly` lets it run without asking (seen live).
+  A sub-agent that can write needs approval, and that propagates up any depth of tree (tested).
+
+### D122. Sub-agents share the parent's bus; events carry `agent` and `depth` (your call)
+**Status:** accepted
+- The console printer indents nested runs, and the JSONL trace records the tree.
+
+### D123. Agent attribution uses a `ContextVar`, not parameters
+**Status:** accepted (made during implementation)
+- **Problem:** a sub-agent's tool calls go through a Toolbox (often a view of the parent's)
+  that doesn't know who's calling. Passing "agent, depth" explicitly would change
+  `execute()`, `ToolSet` and every wrapper.
+- **Chosen:** each agent enters `agent_scope(name)` for its `start`/`step`/`restore`. A sub-agent
+  runs *inside* its parent's tool call, so the innermost scope is always the agent doing the work,
+  and the bus tags events from it.
+- **Trade-off:** implicit context is invisible in signatures. It works, but nothing in
+  `Toolbox.execute()` tells a reader that attribution happens. ContextVars are thread- and
+  asyncio-safe, unlike a global.
+
+### D124. Events have `agent`/`depth` fields with defaults, filled in by the bus
+**Status:** accepted (made during implementation)
+- Emitters didn't change, because the bus applies `dataclasses.replace()`. Events emitted outside
+  any agent (e.g. a Toolbox used directly) keep `agent=""` and `depth=0`.
+- Tests that compared whole events now compare the fields they care about.
+
+### D125. `Tool` attributes are plain annotations, not `ClassVar`
+**Status:** accepted (made during implementation)
+- `AgentTool` sets `name`/`description` per instance and *computes* `side_effects` as a property.
+  `ClassVar` told type checkers that wasn't allowed. Simple tools still set them as class attributes.
+
+### D126. When side effects can't be determined, assume there are some
+**Status:** accepted (made during implementation)
+- A cycle (an agent that contains itself) or tools that can't be inspected count as side effects.
+  This fails closed, consistent with D37, D48 and D58. A wrong "read-only" would skip approval.
+
+### D127. An `AgentTool` call isn't undoable as a unit
+**Status:** open (made during implementation)
+- A sub-agent's writes are recorded in whichever Toolbox it used. Through a view of the parent's
+  Toolbox they're in the parent's history and can be undone one by one. With its own Toolbox,
+  they're in that Toolbox's history.
+- **Option:** make `AgentTool` reversible by remembering its sub-Toolbox's mark and rewinding to it
+  (stage 11's `rewind_to`), so "undo the delegation" becomes one step.
+
+### D128. A depth limit (default 3) stops runaway recursion
+**Status:** accepted (made during implementation)
+- An agent that can call itself would otherwise recurse until the provider budget or Python's stack
+  ran out. Past the limit, `run()` raises `RecursionError`, and the Toolbox turns it into error text
+  for the model (tested).
+
+### D129. Sub-agent copies share the prototype's provider (and everything shallow)
+**Status:** accepted (made during implementation)
+- Observed live: one `UsageTracker` counted all 4 model calls, the sub-agent's included, so one
+  budget covers the whole tree. A breaker or cache inside the provider is shared too.
+- `copy.copy` is shallow: the provider, the tools and the bus are shared, while `messages` and `state`
+  are replaced on `start()`. A sub-agent with its own Toolbox needs its own prototype configured that way.
+
+### D130. `Toolbox.add()` is public
+**Status:** accepted (made during implementation)
+- Needed so a sub-agent can get a view of the Toolbox that will contain it (create the Toolbox,
+  build the view, then add the `AgentTool`). The constructor uses it, so duplicate checks live in one place.
+
+### D131. A sub-agent's stop or failure becomes a tool result for the parent
+**Status:** open (made during implementation)
+- If a sub-agent hits the budget, it *returns* `"[stopped: budget] ..."`, which the parent sees as
+  the tool's output. The parent then tries its own next call, which the shared budget also refuses.
+  It works out, but a `StopRun` inside a sub-agent arguably should stop the whole tree immediately.
+
+### D132. Nested events arrive in post-order
+**Status:** accepted (made during implementation)
+- The sub-agent's `ToolCalled` events arrive *before* the parent's `ToolCalled` for the `AgentTool`
+  itself, because the outer call only finishes when the inner run does. Rebuilding the tree from a
+  trace needs `depth` plus order. Stage 14's Visitor will walk that tree.

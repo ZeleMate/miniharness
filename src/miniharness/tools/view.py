@@ -1,7 +1,8 @@
 """Protection proxy: a restricted view of a Toolbox."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
+from miniharness.tools.base import Tool
 from miniharness.tools.toolbox import Toolbox
 from miniharness.types import ToolCall, ToolSpec
 
@@ -27,6 +28,10 @@ class ToolboxView:
     @classmethod
     def read_only(cls, toolbox: Toolbox) -> "ToolboxView":
         return cls(toolbox, [name for name, tool in toolbox.tools.items() if not tool.side_effects])
+
+    @property
+    def tools(self) -> Mapping[str, Tool]:
+        return {name: tool for name, tool in self.toolbox.tools.items() if name in self.allow}
 
     def specs(self) -> dict[str, ToolSpec]:
         return {name: spec for name, spec in self.toolbox.specs().items() if name in self.allow}

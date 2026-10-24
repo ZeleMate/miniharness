@@ -8,27 +8,30 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, TextIO
 
-from miniharness.events import Event, ModelCalled, RunFinished, StateChanged, ToolCalled
+from miniharness.events import Event, ModelCalled, RunFinished, RunStarted, StateChanged, ToolCalled
 
 
 class ConsolePrinter:
-    """Prints what the agent is doing, as it happens."""
+    """Prints what the agent is doing, as it happens. Sub-agents are indented."""
 
     def __init__(self, stream: TextIO | None = None):
         self.stream = stream or sys.stdout
 
     def __call__(self, event: Event) -> None:
+        indent = "  " * event.depth
         match event:
+            case RunStarted(task=task, agent=agent, depth=depth) if depth > 0:
+                self._print(f"{indent}{agent} started: {_shorten(task)}")
             case StateChanged(new=new):
-                self._print(f"[{new}]")
+                self._print(f"{indent}[{new}]")
             case ModelCalled(stop_reason=stop, tool_calls=n, usage=usage, duration_s=secs):
                 what = f"{n} tool call(s)" if n else stop
-                self._print(f"model: {what}{_usage(usage)}, {secs:.1f}s")
+                self._print(f"{indent}model: {what}{_usage(usage)}, {secs:.1f}s")
             case ToolCalled(call=call, output=output, decision=decision):
                 line = f"{call.name}({call.arguments}) -> {_shorten(output)}"
                 if decision is not None and decision.verdict.value != "allow":
                     line += f"  (by {decision.policy})"
-                self._print(line)
+                self._print(indent + line)
             case RunFinished():
                 pass  # the caller prints the answer
 

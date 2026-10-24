@@ -1,7 +1,7 @@
 """Tools and the Command objects that wrap each call to them."""
 
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import Any
 
 from miniharness.types import ToolCall
 
@@ -23,11 +23,12 @@ class Tool:
     `side_effects = True`, and `reversible = True` only if it implements undo().
     """
 
-    name: ClassVar[str]
-    description: ClassVar[str]
-    parameters: ClassVar[dict[str, Any]] = {"type": "object", "properties": {}}
-    side_effects: ClassVar[bool] = False
-    reversible: ClassVar[bool] = False
+    # Usually set as class attributes; instances may set or compute them (AgentTool)
+    name: str
+    description: str
+    parameters: dict[str, Any] = {"type": "object", "properties": {}}
+    side_effects: bool = False
+    reversible: bool = False
 
     def run(self, **arguments: Any) -> ToolResult:
         raise NotImplementedError

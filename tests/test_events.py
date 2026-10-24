@@ -104,7 +104,7 @@ def test_a_run_tells_the_whole_story_in_order():
     ]
     states = [(e.old, e.new) for e in events if isinstance(e, StateChanged)]
     assert states[0] == ("idle", "thinking") and states[-1] == ("thinking", "done")
-    assert events[-1] == RunFinished("done", "3")
+    assert (events[-1].state, events[-1].answer) == ("done", "3")
 
 
 def test_model_called_carries_usage_and_tool_count():
@@ -143,7 +143,7 @@ def test_unknown_and_failing_tools_are_reported():
 def test_a_stopped_run_finishes_with_the_stopped_state():
     events = recorded_run([BudgetExceeded("over")])
 
-    assert events[-1] == RunFinished("stopped", "[stopped: budget] over")
+    assert (events[-1].state, events[-1].answer) == ("stopped", "[stopped: budget] over")
     assert not any(isinstance(e, ModelCalled) for e in events)  # no call was made
 
 

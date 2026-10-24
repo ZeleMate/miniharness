@@ -7,8 +7,10 @@ is listening (a console printer, a trace file, a test) or whether anyone is.
 from __future__ import annotations
 
 import warnings
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Union
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Callable, Iterator, Union
 
 from miniharness.types import ToolCall, Usage
 
@@ -18,15 +20,23 @@ if TYPE_CHECKING:
     from miniharness.tools.policy import Decision
 
 
+# Every event also carries `agent` and `depth`, filled in by the bus from the
+# agent that is running when the event is emitted (see agent_scope below).
+
+
 @dataclass(frozen=True)
 class RunStarted:
     task: str
+    agent: str = ""
+    depth: int = 0
 
 
 @dataclass(frozen=True)
 class StateChanged:
     old: str
     new: str
+    agent: str = ""
+    depth: int = 0
 
 
 @dataclass(frozen=True)
@@ -36,6 +46,8 @@ class ModelCalled:
     tool_calls: int
     usage: Usage | None
     duration_s: float
+    agent: str = ""
+    depth: int = 0
 
 
 @dataclass(frozen=True)
@@ -44,16 +56,46 @@ class ToolCalled:
     output: str
     decision: Decision | None  # None: the tool doesn't exist, so no policy ran
     failed: bool = False  # the tool ran and raised
+    agent: str = ""
+    depth: int = 0
 
 
 @dataclass(frozen=True)
 class RunFinished:
     state: str  # "done" or "stopped"
     answer: str
+    agent: str = ""
+    depth: int = 0
 
 
 Event = Union[RunStarted, StateChanged, ModelCalled, ToolCalled, RunFinished]
 Handler = Callable[[Event], None]
+
+
+# --- Which agent is running? ---------------------------------------------------
+# A ContextVar instead of passing (agent, depth) through every call: a sub-agent
+# runs *inside* its parent's tool call, so the innermost scope is always the
+# agent doing the work. ContextVars are also safe with threads and asyncio.
+
+_scope: ContextVar[tuple[str, int] | None] = ContextVar("agent_scope", default=None)
+
+
+@contextmanager
+def agent_scope(name: str) -> Iterator[int]:
+    """Mark `name` as the running agent; nested scopes are one level deeper."""
+    parent = _scope.get()
+    depth = 0 if parent is None else parent[1] + 1
+    token = _scope.set((name, depth))
+    try:
+        yield depth
+    finally:
+        _scope.reset(token)
+
+
+def current_depth() -> int:
+    """Depth of the running agent, or -1 outside any agent."""
+    scope = _scope.get()
+    return -1 if scope is None else scope[1]
 
 
 class EventBus:
@@ -73,6 +115,9 @@ class EventBus:
         return lambda: self._handlers.remove(handler)
 
     def emit(self, event: Event) -> None:
+        scope = _scope.get()
+        if scope is not None:
+            event = replace(event, agent=scope[0], depth=scope[1])
         for handler in list(self._handlers):  # a handler may unsubscribe itself
             try:
                 handler(event)

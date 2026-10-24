@@ -25,7 +25,7 @@ import warnings
 from typing import Any
 
 from miniharness.checkpoint import Checkpoint
-from miniharness.events import EventBus, RunFinished, RunStarted, StateChanged
+from miniharness.events import EventBus, RunFinished, RunStarted, StateChanged, agent_scope
 from miniharness.lifecycle import AgentState, Idle, Thinking, from_snapshot
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider
@@ -41,7 +41,9 @@ class Agent:
         tools: ToolSet | None = None,
         max_steps: int = 10,
         events: EventBus | None = None,
+        name: str = "agent",
     ):
+        self.name = name  # tags this agent's events; sub-agents use their tool name
         self.provider = provider
         self.tools = tools if tools is not None else Toolbox(default_tools())
         self.system_prompt = system_prompt if system_prompt is not None else default_prompt().build()
@@ -56,16 +58,18 @@ class Agent:
     def start(self, task: str) -> AgentState:
         if not isinstance(self.state, Idle) and not self.state.terminal:
             raise RuntimeError(f"Agent is already running ({self.state.name})")
-        self.messages = self.initial_messages(task)
-        self.model_calls = 0
-        self.events.emit(RunStarted(task))
-        self._transition(Thinking())
+        with agent_scope(self.name):
+            self.messages = self.initial_messages(task)
+            self.model_calls = 0
+            self.events.emit(RunStarted(task))
+            self._transition(Thinking())
         return self.state
 
     def step(self) -> AgentState:
-        self._transition(self.state.step(self))
-        if self.state.terminal:
-            self.events.emit(RunFinished(self.state.name, self.state.answer))
+        with agent_scope(self.name):
+            self._transition(self.state.step(self))
+            if self.state.terminal:
+                self.events.emit(RunFinished(self.state.name, self.state.answer))
         return self.state
 
     # --- memento -------------------------------------------------------------
@@ -84,7 +88,8 @@ class Agent:
             self._rewind_files(checkpoint)
         self.messages = list(copy.deepcopy(checkpoint.messages))
         self.model_calls = checkpoint.model_calls
-        self._transition(from_snapshot(checkpoint.state))
+        with agent_scope(self.name):
+            self._transition(from_snapshot(checkpoint.state))
 
     def _rewind_files(self, checkpoint: Checkpoint) -> None:
         mark = checkpoint.tool_mark
@@ -108,7 +113,7 @@ class Agent:
         fork its own workspace and undo history.
         """
         checkpoint = checkpoint if checkpoint is not None else self.checkpoint()
-        unknown = set(overrides) - {"provider", "tools", "system_prompt", "max_steps", "events"}
+        unknown = set(overrides) - {"provider", "tools", "system_prompt", "max_steps", "events", "name"}
         if unknown:
             raise TypeError(f"Can't override {sorted(unknown)}")
         clone = copy.copy(self)  # same class: a fork of a subclass is that subclass

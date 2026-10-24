@@ -32,15 +32,18 @@ class Toolbox:
     def __init__(self, tools: list[Tool], policy: PolicyChain | None = None, events: EventBus | None = None):
         self._tools: dict[str, Tool] = {}
         for tool in tools:
-            if tool.name in self._tools:
-                raise ValueError(f"Duplicate tool name {tool.name!r}")
-            self._tools[tool.name] = tool
+            self.add(tool)
         # Default: read-only tools run, side effects are denied (no approver)
         self.policy = policy if policy is not None else default_policy()
         self.history: list[ToolCommand] = []
         self.denied: list[tuple[ToolCall, Decision]] = []
         self.events = events
         self.id = uuid.uuid4().hex  # lets a mark recognize the toolbox it came from
+
+    def add(self, tool: Tool) -> None:
+        if tool.name in self._tools:
+            raise ValueError(f"Duplicate tool name {tool.name!r}")
+        self._tools[tool.name] = tool
 
     @property
     def tools(self) -> Mapping[str, Tool]:

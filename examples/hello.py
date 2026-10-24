@@ -10,6 +10,7 @@
     uv run examples/hello.py --read-only "Write a haiku to haiku.txt"  # model can't see write_file
     uv run examples/hello.py --trace run.jsonl                          # also write a JSONL trace
     uv run examples/hello.py --checkpoint run.json --budget 0.0001      # stops; rerun to resume
+    uv run examples/hello.py --delegate "Ask the researcher what notes.txt says"
 """
 
 import argparse
@@ -36,6 +37,7 @@ from miniharness.providers import (
     lazy_provider,
 )
 from miniharness.tools import (
+    AgentTool,
     AllowReadOnly,
     AskBeforeSideEffects,
     MaxCalls,
@@ -67,6 +69,7 @@ def main() -> None:
     parser.add_argument("--fallback", help="provider[:model] to use if the main one fails or refuses")
     parser.add_argument("--trace", help="append every event to this JSONL file")
     parser.add_argument("--checkpoint", help="autosave here; if it exists, resume the unfinished run")
+    parser.add_argument("--delegate", action="store_true", help="add a read-only 'researcher' sub-agent")
     parser.add_argument("--read-only", action="store_true", help="hide tools that change anything")
     parser.add_argument("--yes", action="store_true", help="approve every tool call that asks")
     parser.add_argument("--rewind", action="store_true", help="undo all file changes after the run")
@@ -99,6 +102,15 @@ def main() -> None:
     if args.trace:
         events.subscribe(JsonlTracer(args.trace))
     toolbox = Toolbox(default_tools(workspace), policy=policy, events=events)
+    if args.delegate:
+        # Same provider (and budget); can only read; reports on the same event bus
+        researcher = Agent(
+            provider=provider,
+            system_prompt=default_prompt().instructions("Read files to answer. Reply with a short summary.").build(),
+            tools=ToolboxView.read_only(toolbox),
+            events=events,
+        )
+        toolbox.add(AgentTool("researcher", "Reads files in the workspace and summarizes them.", researcher))
     tools = ToolboxView.read_only(toolbox) if args.read_only else toolbox
     agent = Agent(provider=provider, system_prompt=system_prompt, tools=tools, events=events)
     print(f"[{type(base).__name__} / {provider.model}]")

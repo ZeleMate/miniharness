@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from miniharness.tools.agent_tool import AgentTool
 from miniharness.tools.base import IrreversibleError, Tool, ToolCommand, ToolResult
 from miniharness.tools.basic import Add, CurrentTime, Multiply
 from miniharness.tools.files import ReadFile, WriteFile
@@ -29,6 +30,7 @@ def default_tools(workspace: Path | None = None) -> list[Tool]:
 
 __all__ = [
     "Add",
+    "AgentTool",
     "AllowReadOnly",
     "AllowTools",
     "AskBeforeSideEffects",
