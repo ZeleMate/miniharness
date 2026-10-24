@@ -2,7 +2,7 @@ import pytest
 
 from miniharness import Agent, LLMResponse, Message, ToolCall
 from miniharness.providers import MockProvider
-from miniharness.tools import run_tool
+from miniharness.tools import Toolbox, default_tools
 
 
 def test_answers_without_tools():
@@ -42,6 +42,16 @@ def test_stops_after_max_steps():
         Agent(MockProvider([looping, looping]), max_steps=2).run("loop forever")
 
 
-def test_tool_errors_are_returned_as_text():
-    assert run_tool("nope", {}).startswith("Error: unknown tool")
-    assert run_tool("add", {"a": 1}).startswith("Error: TypeError")
+def test_tool_calls_go_through_the_injected_toolbox():
+    toolbox = Toolbox(default_tools())
+    provider = MockProvider([
+        LLMResponse(
+            Message(role="assistant", tool_calls=[ToolCall(id="c", name="add", arguments={"a": 1, "b": 2})]),
+            stop_reason="tool_calls",
+        ),
+        LLMResponse(Message(role="assistant", content="3"), stop_reason="end"),
+    ])
+
+    Agent(provider, tools=toolbox).run("1+2?")
+
+    assert [c.call.name for c in toolbox.history] == ["add"]

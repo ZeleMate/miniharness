@@ -9,8 +9,10 @@ from types import SimpleNamespace as NS
 import pytest
 
 from miniharness.providers import AnthropicProvider, OpenRouterProvider
-from miniharness.tools import TOOLS
+from miniharness.tools import Toolbox, default_tools
 from miniharness.types import Message, ToolCall
+
+TOOLS = Toolbox(default_tools()).specs()
 
 CONVERSATION = [
     Message(role="system", content="Be brief."),

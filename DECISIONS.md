@@ -97,7 +97,7 @@ codebase decided and why*.
   Mitigation: the live smoke test (`examples/hello.py` on both providers).
 
 ### D11. `TOOLS` stays a global that `Agent` passes to providers
-**Status:** open (deliberately deferred)
+**Status:** superseded by D32 (stage 5)
 - **Why defer:** it's out of scope for this refactor. Stage 5 (Command) redesigns
   tools, and the bonus stage replaces the global registry with dependency injection.
 
@@ -238,3 +238,86 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 - **Behavior change:** `Agent`'s default prompt now comes from `default_prompt()`, which
   adds "prefer tools over mental arithmetic". It's a small change to what the model is
   told.
+
+---
+
+## Stage 5: Command
+
+### D29. One class per tool, sharing a `Tool` base class (your call; base class mine)
+**Status:** accepted
+- **Options:** class per tool · `@tool` decorator that derives schemas from type hints.
+- **Why:** classes give undo logic and per-tool state (a workspace root) a natural home.
+- **Base class vs Protocol:** providers use a `Protocol` (D2), but tools use a base
+  class because they share *defaults*: read-only, not reversible, and `undo()` raises.
+  Inheritance carries defaults; a Protocol can't. The rule of thumb: Protocol for pure
+  interfaces, a base class when there's shared behavior.
+
+### D30. Tools declare `side_effects` and `reversible` (your call)
+**Status:** accepted
+- **Options:** declared reversibility · undo on everything (a no-op for read-only) ·
+  no undo, only a log.
+- **Why:** it's honest. A no-op `undo()` on "send email" would *look* like it worked.
+  The two flags separate "changes nothing", "changes something reversibly" and
+  "changes something permanently".
+
+### D31. `read_file`/`write_file` confined to a workspace (your call)
+**Status:** accepted
+- `resolve_in_workspace` resolves `..` and symlinks *before* checking containment,
+  so `../x`, absolute paths and symlinks pointing outside are all rejected (each is
+  tested). Checking the raw string for `..` would miss symlinks.
+
+### D32. The Agent receives an injected `Toolbox` (your call)
+**Status:** accepted. This replaces the `TOOLS` global (D11). The Toolbox is the
+*Invoker*: it looks tools up, runs each call as a `ToolCommand`, and keeps the history.
+
+### D33. Undo by *snapshot*, not by *inverse operation*
+**Status:** accepted (made during implementation)
+- **Options:** (a) the tool records the prior state at run time (`_WriteUndo.previous`)
+  and undo restores it; (b) the tool defines a compensating command (the inverse of
+  "create file" is "delete file") without recording state.
+- **Chosen:** (a). It's exact, and it's simple for files. (b) is what you need when
+  state can't be snapshotted, like refunding a payment instead of "un-charging" it.
+  That's the *Saga* pattern, common in distributed systems.
+- **Note:** the snapshot is a small *Memento*, which previews stage 11.
+
+### D34. `undo_last` stops at an irreversible side effect instead of skipping it
+**Status:** accepted (made during implementation)
+- **Why:** if a file was written and then emailed, undoing the write leaves the
+  world inconsistent with what was sent. Stopping is the safe default, and a caller
+  can still decide to skip deliberately.
+
+### D35. Undo refuses if the file changed after our write
+**Status:** accepted (made during implementation)
+- This is *optimistic concurrency*: we remember what we wrote and only restore if
+  the file still contains it. Otherwise undo would silently destroy someone else's edit.
+
+### D36. Failed calls become error text for the model and stay out of the history
+**Status:** accepted (made during implementation)
+- **Why:** the model can recover from an error message. A failed call changed
+  nothing, so there's nothing to undo. (`write_text` isn't atomic, so a crash halfway
+  through a write is an accepted gap.)
+
+### D37. The default toolbox is read-only; file tools need an explicit workspace
+**Status:** accepted (made during implementation)
+- This is the *principle of least privilege*: `Agent(provider)` with no arguments can't
+  touch the disk. You have to grant filesystem access deliberately with
+  `default_tools(workspace)`.
+
+### D38. `read_file` truncates at 20,000 characters
+**Status:** accepted (made during implementation)
+- **Why:** one large file shouldn't flood the context window. The truncation note
+  tells the model the file is longer. A smarter version would support line ranges.
+
+### D39. Parallel tool calls run sequentially, in the order the model sent them
+**Status:** open (observed live in this stage)
+- The model sent `write_file` and `read_file` *in the same turn*. That worked only
+  because we execute them in order. Running them concurrently would race.
+- **Revisit when:** tools become async or slow. Options include running only
+  read-only calls concurrently, or always respecting the order.
+
+### D40. History is in memory, unbounded, and shared across runs of the same Toolbox
+**Status:** open (made during implementation)
+- `Agent.run()` doesn't reset `toolbox.history`, so a reused toolbox accumulates
+  commands across tasks. That's handy for "undo the last task", but nothing marks
+  where one run ends and the next begins.
+- **Revisit when:** stage 11 (checkpoints) needs run boundaries and serializable history.

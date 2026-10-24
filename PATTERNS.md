@@ -95,3 +95,25 @@ One entry per pattern, written when you apply it. Template:
 - **Try it:** add a `.persona()` section, or decide where `.examples()` (few-shot)
   belongs in the order and why.
 - **Your notes:**
+
+---
+
+## Command (stage 5)
+
+- **Problem:** a tool call was a dict lookup plus a function call. Nothing recorded
+  what happened, and nothing could be reversed.
+- **Roles:**
+  - *Command* = `ToolCommand`: one call packaged with its tool, arguments, result
+    and undo info. It's an object you can store, inspect, replay or undo.
+  - *Invoker* = `Toolbox`: runs commands and keeps the history.
+  - *Receiver* = the workspace on disk, which actually changes.
+  - *Client* = the Agent, which turns model output into commands.
+- **The key insight:** turning a *call* into an *object* is what makes logging,
+  queuing, replay and undo possible. Without that object, there's nothing to hold on to.
+- **Two undo strategies:** snapshot (save prior state, restore it) vs compensating
+  command (run the inverse action). See DECISIONS.md D33, and the Saga pattern.
+- **Harness connection:** Claude Code's rewind/checkpoints are this pattern applied to
+  file edits.
+- **Try it:** add an `AppendFile` tool. What's its undo info? Is a snapshot or an
+  inverse cheaper here?
+- **Your notes:**
