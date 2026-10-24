@@ -283,3 +283,23 @@ One entry per pattern, written when you apply it. Template:
 - **Try it:** add an `editor` member between writer and reviewer by editing only `routes`. Did any
   agent's code or prompt need to change?
 - **Your notes:**
+
+---
+
+## Visitor (stage 14)
+
+- **Problem:** many operations over the same trace tree (totals per agent, an HTML report, and later
+  exports and checks). Putting each as a method on every node class would bloat the nodes and mix
+  unrelated concerns.
+- **Shape:** nodes (`RunNode`, `ModelCallNode`, `ToolCallNode`, `MessageNode`) only implement
+  `accept(visitor)`, which calls `visitor.visit_<type>(self)`. Operations are `TraceVisitor`
+  subclasses that override the visits they care about.
+- **Double dispatch:** which code runs depends on *two* types, the node's (via `accept`) and the
+  visitor's (via the method it defines).
+- **The expression problem:** Visitor makes new *operations* cheap and new *node types* expensive.
+  Plain methods on nodes are the opposite. Choose based on which one will grow.
+- **Live lesson:** a five-line throwaway visitor found which layer invented two "action items" (the
+  parent, not the sub-agent). See DECISIONS.md D146.
+- **Try it:** write a `SlowestCalls` visitor that lists the three slowest model calls with their agent.
+  Did you touch any node class?
+- **Your notes:**

@@ -23,6 +23,7 @@ uv run examples/hello.py --trace run.jsonl                        # also write a
 uv run examples/hello.py --checkpoint run.json --budget 0.0001    # stops early; rerun to resume
 uv run examples/hello.py --delegate "Ask the researcher what notes.txt says"  # read-only sub-agent
 uv run examples/team.py                                           # writer and reviewer via a mediator
+uv run python -m miniharness.trace run.jsonl --html report.html   # summarize a trace
 ```
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
@@ -31,6 +32,7 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 
 | File | What it is |
 |---|---|
+| `src/miniharness/trace.py` | Trace tree + visitors: `CostSummary`, `HtmlReport` (stage 14: Visitor) |
 | `src/miniharness/types.py` | Provider-neutral `Message`, `ToolCall`, `LLMResponse` |
 | `src/miniharness/agent.py` | The agent (stage 1: Template Method), with an injected provider |
 | `src/miniharness/lifecycle.py` | Agent lifecycle states: `start()` / `step()` (stage 9: State) |
@@ -64,7 +66,7 @@ Only add a pattern once you feel the pain it solves.
 | 11 | Checkpoint, rewind (with files), save/resume, fork | Memento, Prototype ✅ |
 | 12 | Sub-agents as tools (`AgentTool`); trees with derived side effects | Composite ✅ |
 | 13 | Peer team (writer ↔ reviewer) routed by a `Team` mediator | Mediator ✅ |
-| 14 | Cost/HTML/JSON over the trace tree | Visitor |
+| 14 | Trace tree from events; cost summary and HTML report | Visitor ✅ |
 | 15 | Streaming tokens and events | Iterator |
 | 16 | `Agent("task").run()` hides everything | Facade |
 | + | Agent types × providers | Bridge |

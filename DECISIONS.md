@@ -1024,3 +1024,69 @@ from `agent.messages` afterwards.
 **Status:** accepted (made during implementation)
 - So it's tagged `agent=""`, or with the enclosing agent if a team runs inside one (e.g. a team behind an
   `AgentTool`). The console shows `── writer → reviewer: ...`.
+
+---
+
+## Stage 14: Visitor
+
+### D145. Classic `accept`/`visit` double dispatch (your call)
+**Status:** accepted
+- **Options:** `node.accept(visitor)` → `visitor.visit_<type>(node)` · `match` statements in plain functions.
+- **Why:** it shows the pattern itself. The trade-off is the *expression problem*: a new operation is one
+  new class (demonstrated twice: a visitor written inside a test, and a throwaway one written live to
+  debug a run), while a new node type touches the base visitor and every visitor that cares.
+
+### D146. Two visitors: `CostSummary` and `HtmlReport` (your call)
+**Status:** accepted
+- Live: the summary's totals matched the run's own usage line exactly ($0.000760 over 4 calls), split
+  between `agent` and `researcher`.
+- **Observed value:** a live answer claimed 4 action items when the file had 2. Walking the trace
+  showed `read_file` returned 2, the researcher reported 2, and the *parent* invented the other two.
+  Without the tree you can't tell which layer went wrong.
+
+### D147. The tree is rebuilt from event *records* (the JSONL format), not from event objects
+**Status:** accepted (made during implementation)
+- **Why:** one input format for files and, later, live streams. A live builder would just turn events
+  into the same records the tracer writes.
+- **Consequence:** the tracer's record keys are now a contract. Renaming an event field breaks old traces.
+  A format version (like checkpoints, D114) would be the next step if traces need to last.
+
+### D148. A nested run attaches to the *next* `ToolCalled` of the run that's open around it
+**Status:** accepted, with a known dependency (made during implementation)
+- Events arrive in post-order (D132), so the builder holds deeper runs as pending until their parent's
+  tool call finishes.
+- **Relies on sequential tools (D39):** with tools running concurrently, two sub-runs and two tool
+  calls could interleave and pair up wrongly. Robust pairing would need `RunStarted` to carry the id of
+  the tool call that started it.
+
+### D149. `StateChanged` is left out of the tree
+**Status:** accepted (made during implementation)
+- Runs, model calls and tool calls already tell the story; state changes would double the nodes.
+
+### D150. Team turns are top-level runs, with messages between them
+**Status:** accepted (made during implementation)
+- Each `follow_up` turn is its own `RunNode`. A member's turns aren't grouped under the member, so the
+  tree shows the conversation in the order it happened.
+
+### D151. The base visitor walks children by default; overrides must call `super()` to keep walking
+**Status:** accepted (made during implementation)
+- Visitors override only what they need. The risk is that an override that forgets `super()` silently
+  skips that subtree, for example missing a sub-agent's costs. `CostSummary.visit_tool` calls it explicitly.
+
+### D152. Visitors accumulate state; results are read after `accept()`
+**Status:** accepted (made during implementation)
+- `CostSummary().by_agent`, `HtmlReport().page()`. Returning values from every `visit_*` would make
+  combining results awkward. The cost is one visitor instance per traversal.
+
+### D153. Visitors compose: the HTML report runs a cost summary per run
+**Status:** accepted (made during implementation)
+- Each run's header shows its cost *including sub-agents*. Re-walking each subtree is quadratic for deep
+  trees, which is fine at trace sizes. A single pass computing costs bottom-up would scale better.
+
+### D154. The HTML report escapes all trace text
+**Status:** accepted (made during implementation)
+- Tool outputs and model text are untrusted: a file containing `<script>` must not run when you open the
+  report (tested). The page is self-contained, with light and dark styles.
+
+### D155. Command line: `python -m miniharness.trace FILE [--html OUT]`
+**Status:** accepted (made during implementation)
