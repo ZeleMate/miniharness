@@ -48,3 +48,22 @@ class LLMResponse:
     # "end" | "tool_calls" | "max_tokens" | "refusal" | provider-specific
     stop_reason: str
     usage: Usage | None = None  # None means the provider reported nothing
+
+
+# --- Streaming (stage 15) ------------------------------------------------------
+# A provider's `stream()` yields TextDelta items as text arrives and always ends
+# with exactly one Completed, carrying the same LLMResponse `complete()` returns.
+# Tool-call fragments are assembled by the adapter and only appear in Completed.
+
+
+@dataclass(frozen=True)
+class TextDelta:
+    text: str
+
+
+@dataclass(frozen=True)
+class Completed:
+    response: LLMResponse
+
+
+StreamChunk = TextDelta | Completed

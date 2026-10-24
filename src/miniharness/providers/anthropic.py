@@ -1,12 +1,12 @@
 import os
 from dataclasses import replace
-from typing import Any
+from typing import Any, Iterator
 
 import anthropic
 
 from miniharness.adapters.anthropic_messages import AnthropicMessagesAdapter
 from miniharness.providers.registry import register_provider
-from miniharness.types import LLMResponse, Message, ToolSpec, Usage
+from miniharness.types import Completed, LLMResponse, Message, StreamChunk, ToolSpec, Usage
 
 # USD per million tokens (input, output). Thinking tokens bill as output.
 # Simplified: ignores prompt-cache pricing and Haiku's higher rate above 100K input.
@@ -34,6 +34,15 @@ class AnthropicProvider:
         if result.usage is not None:
             result.usage = self.price(result.usage)
         return result
+
+    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+        request = self.adapter.to_wire(messages, tools)
+        # The context manager closes the HTTP stream, even if the consumer stops early
+        with self.client.messages.stream(model=self.model, max_tokens=self.max_tokens, **request) as stream:
+            for chunk in self.adapter.from_stream(stream):
+                if isinstance(chunk, Completed) and chunk.response.usage is not None:
+                    chunk.response.usage = self.price(chunk.response.usage)
+                yield chunk
 
     def price(self, usage: Usage) -> Usage:
         prices = PRICES_PER_MTOK.get(self.model)

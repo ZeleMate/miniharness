@@ -4,24 +4,36 @@
       ^                                  ^                           |
       +------------ trial succeeds ------+------ trial fails --------+
 
-Each state is its own class with its own `call()`, so no method branches on
+Each state is its own class with its own hooks, so no method branches on
 "which state am I in?". A transition is just assigning a new state object.
 """
 
 import time
-from typing import Callable
+from typing import Callable, Iterator
 
 from miniharness.errors import CircuitOpenError
 from miniharness.providers.base import Provider
+from miniharness.providers.streaming import stream_from
 from miniharness.providers.wrappers import _Wrapper, transient_errors
-from miniharness.types import LLMResponse, Message, ToolSpec
+from miniharness.types import Completed, LLMResponse, Message, StreamChunk, ToolSpec
 
 
 class _State:
+    """Three hooks around a call, instead of one `call(fn)`.
+
+    A wrapped `fn()` returning a response can't cover a stream, whose outcome is
+    only known after the last chunk. With hooks, `complete()` and `stream()`
+    share the same state logic (DECISIONS.md D161).
+    """
+
     name: str
 
-    def call(self, breaker: "CircuitBreaker", fn: Callable[[], LLMResponse]) -> LLMResponse:
-        raise NotImplementedError
+    def admit(self, breaker: "CircuitBreaker") -> None:
+        """Before the call: raise to reject it, or transition (the new state then decides)."""
+
+    def succeeded(self, breaker: "CircuitBreaker") -> None: ...
+
+    def failed(self, breaker: "CircuitBreaker") -> None: ...
 
 
 class Closed(_State):
@@ -32,16 +44,13 @@ class Closed(_State):
     def __init__(self) -> None:
         self.failures = 0
 
-    def call(self, breaker, fn):
-        try:
-            response = fn()
-        except breaker.on:
-            self.failures += 1
-            if self.failures >= breaker.threshold:
-                breaker.transition(Open(breaker.clock()))
-            raise
+    def succeeded(self, breaker):
         self.failures = 0
-        return response
+
+    def failed(self, breaker):
+        self.failures += 1
+        if self.failures >= breaker.threshold:
+            breaker.transition(Open(breaker.clock()))
 
 
 class Open(_State):
@@ -52,14 +61,14 @@ class Open(_State):
     def __init__(self, opened_at: float):
         self.opened_at = opened_at
 
-    def call(self, breaker, fn):
+    def admit(self, breaker):
         waited = breaker.clock() - self.opened_at
         if waited < breaker.cooldown_s:
             raise CircuitOpenError(
                 f"{breaker.model} is failing; retrying in {breaker.cooldown_s - waited:.0f}s"
             )
         breaker.transition(HalfOpen())
-        return breaker.state.call(breaker, fn)
+        breaker.state.admit(breaker)
 
 
 class HalfOpen(_State):
@@ -67,14 +76,11 @@ class HalfOpen(_State):
 
     name = "half_open"
 
-    def call(self, breaker, fn):
-        try:
-            response = fn()
-        except breaker.on:
-            breaker.transition(Open(breaker.clock()))
-            raise
+    def succeeded(self, breaker):
         breaker.transition(Closed())
-        return response
+
+    def failed(self, breaker):
+        breaker.transition(Open(breaker.clock()))
 
 
 class CircuitBreaker(_Wrapper):
@@ -105,4 +111,27 @@ class CircuitBreaker(_Wrapper):
         self.state = new
 
     def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
-        return self.state.call(self, lambda: self.inner.complete(messages, tools))
+        self.state.admit(self)
+        try:
+            response = self.inner.complete(messages, tools)
+        except self.on:
+            self.state.failed(self)
+            raise
+        self.state.succeeded(self)
+        return response
+
+    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+        """Same as complete(); a stream abandoned before Completed counts as neither outcome.
+
+        Success is recorded *at* Completed, before passing it on: a consumer may stop
+        right there, and code after the last `yield` would then never run.
+        """
+        self.state.admit(self)
+        try:
+            for chunk in stream_from(self.inner, messages, tools):
+                if isinstance(chunk, Completed):
+                    self.state.succeeded(self)
+                yield chunk
+        except self.on:
+            self.state.failed(self)
+            raise

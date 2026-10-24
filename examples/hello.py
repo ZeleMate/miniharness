@@ -11,6 +11,7 @@
     uv run examples/hello.py --trace run.jsonl                          # also write a JSONL trace
     uv run examples/hello.py --checkpoint run.json --budget 0.0001      # stops; rerun to resume
     uv run examples/hello.py --delegate "Ask the researcher what notes.txt says"
+    uv run examples/hello.py --stream "Explain undo in two sentences"   # tokens as they arrive
 """
 
 import argparse
@@ -70,6 +71,7 @@ def main() -> None:
     parser.add_argument("--trace", help="append every event to this JSONL file")
     parser.add_argument("--checkpoint", help="autosave here; if it exists, resume the unfinished run")
     parser.add_argument("--delegate", action="store_true", help="add a read-only 'researcher' sub-agent")
+    parser.add_argument("--stream", action="store_true", help="print the model's text as it arrives")
     parser.add_argument("--read-only", action="store_true", help="hide tools that change anything")
     parser.add_argument("--yes", action="store_true", help="approve every tool call that asks")
     parser.add_argument("--rewind", action="store_true", help="undo all file changes after the run")
@@ -109,10 +111,11 @@ def main() -> None:
             system_prompt=default_prompt().instructions("Read files to answer. Reply with a short summary.").build(),
             tools=ToolboxView.read_only(toolbox),
             events=events,
+            stream=args.stream,
         )
         toolbox.add(AgentTool("researcher", "Reads files in the workspace and summarizes them.", researcher))
     tools = ToolboxView.read_only(toolbox) if args.read_only else toolbox
-    agent = Agent(provider=provider, system_prompt=system_prompt, tools=tools, events=events)
+    agent = Agent(provider=provider, system_prompt=system_prompt, tools=tools, events=events, stream=args.stream)
     print(f"[{type(base).__name__} / {provider.model}]")
     if args.checkpoint:
         saved = Path(args.checkpoint)
@@ -136,7 +139,8 @@ def main() -> None:
         answer = agent.state.answer
     else:
         answer = agent.run(args.task)  # the ConsolePrinter shows progress live
-    print(f"\n{answer}")
+    if not (args.stream and agent.state.name == "done"):  # a streamed answer was already shown
+        print(f"\n{answer}")
 
     if isinstance(base, FallbackChain) and base.failures:
         for link, why in base.failures:

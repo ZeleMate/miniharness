@@ -51,6 +51,15 @@ class ModelCalled:
 
 
 @dataclass(frozen=True)
+class TokenStreamed:
+    """A piece of model text, as it arrives. Only emitted when the agent streams."""
+
+    text: str
+    agent: str = ""
+    depth: int = 0
+
+
+@dataclass(frozen=True)
 class ToolCalled:
     call: ToolCall
     output: str
@@ -79,7 +88,7 @@ class RunFinished:
     depth: int = 0
 
 
-Event = Union[RunStarted, StateChanged, ModelCalled, ToolCalled, MessageRouted, RunFinished]
+Event = Union[RunStarted, StateChanged, TokenStreamed, ModelCalled, ToolCalled, MessageRouted, RunFinished]
 Handler = Callable[[Event], None]
 
 

@@ -22,6 +22,8 @@ uv run examples/hello.py --read-only "Write a haiku to haiku.txt"  # model can't
 uv run examples/hello.py --trace run.jsonl                        # also write a JSONL event trace
 uv run examples/hello.py --checkpoint run.json --budget 0.0001    # stops early; rerun to resume
 uv run examples/hello.py --delegate "Ask the researcher what notes.txt says"  # read-only sub-agent
+uv run examples/hello.py --stream "Explain undo in two sentences"  # print tokens as they arrive
+uv run examples/stream.py --max-words 15 "Tell me a long story"    # pull the run with a for loop; stop early
 uv run examples/team.py                                           # writer and reviewer via a mediator
 uv run python -m miniharness.trace run.jsonl --html report.html   # summarize a trace
 ```
@@ -33,13 +35,13 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 | File | What it is |
 |---|---|
 | `src/miniharness/trace.py` | Trace tree + visitors: `CostSummary`, `HtmlReport` (stage 14: Visitor) |
-| `src/miniharness/types.py` | Provider-neutral `Message`, `ToolCall`, `LLMResponse` |
-| `src/miniharness/agent.py` | The agent (stage 1: Template Method), with an injected provider |
-| `src/miniharness/lifecycle.py` | Agent lifecycle states: `start()` / `step()` (stage 9: State) |
-| `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory); usage/budget/retry/cache wrappers (stage 6: Decorator); `FallbackChain` (stage 7); `LazyProvider` (stage 8: Proxy); `CircuitBreaker` (stage 9: State) |
+| `src/miniharness/types.py` | Provider-neutral `Message`, `ToolCall`, `LLMResponse`; stream chunks `TextDelta`, `Completed` |
+| `src/miniharness/agent.py` | The agent (stage 1: Template Method), with an injected provider; `iter_run()` (stage 15: Iterator) |
+| `src/miniharness/lifecycle.py` | Agent lifecycle states: `start()` / `step()` (stage 9: State); generator `iter_step()` (stage 15) |
+| `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory); usage/budget/retry/cache wrappers (stage 6: Decorator); `FallbackChain` (stage 7); `LazyProvider` (stage 8: Proxy); `CircuitBreaker` (stage 9: State); `stream()` on every provider and wrapper, `streaming.py` helpers (stage 15: Iterator) |
 | `src/miniharness/adapters/` | Our types ↔ OpenAI / Anthropic wire formats (stage 2: Adapter) |
 | `src/miniharness/checkpoint.py` | `Checkpoint`: snapshot, save, load (stage 11: Memento); `Agent.fork()` (Prototype) |
-| `src/miniharness/events.py` | Typed events + `EventBus` (stage 10: Observer) |
+| `src/miniharness/events.py` | Typed events + `EventBus` (stage 10: Observer); `TokenStreamed` (stage 15) |
 | `src/miniharness/observers.py` | `ConsolePrinter`, `JsonlTracer` |
 | `src/miniharness/prompts.py` | `SystemPromptBuilder` + `default_prompt()` director (stage 4: Builder) |
 | `src/miniharness/team.py` | `Team` mediator: peers talk only through it (stage 13: Mediator) |
@@ -67,7 +69,7 @@ Only add a pattern once you feel the pain it solves.
 | 12 | Sub-agents as tools (`AgentTool`); trees with derived side effects | Composite ✅ |
 | 13 | Peer team (writer ↔ reviewer) routed by a `Team` mediator | Mediator ✅ |
 | 14 | Trace tree from events; cost summary and HTML report | Visitor ✅ |
-| 15 | Streaming tokens and events | Iterator |
+| 15 | Streaming tokens and events; `for event in agent.iter_run(task)` | Iterator ✅ |
 | 16 | `Agent("task").run()` hides everything | Facade |
 | + | Agent types × providers | Bridge |
 | + | Global registry → dependency injection | Singleton (and why to avoid it) |

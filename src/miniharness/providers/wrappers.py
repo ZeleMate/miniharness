@@ -9,12 +9,19 @@ stack, and the stacking order changes the behavior:
 - the cache is outermost, so a cache hit costs nothing and skips the budget
 - retry sits outside the budget, so every attempt is checked against it
 - the tracker is innermost, so it sees every real call, including failed ones
+
+Streaming (stage 15): `_Wrapper.stream()` goes through the wrapper's own
+`complete()`, so a wrapper that doesn't know about streaming still applies
+its behavior and just stops being live (DECISIONS.md D158). The wrappers
+below override `stream()` to stay live. Forwarding to `inner.stream()` by
+default would have silently skipped the budget.
 """
 
 import hashlib
 import json
 import pickle
 from pathlib import Path
+from typing import Iterator
 
 import anthropic
 import openai
@@ -22,7 +29,8 @@ import openai
 from miniharness.errors import BudgetExceeded, CircuitOpenError, MalformedResponseError
 from miniharness.providers.base import Provider
 from miniharness.providers.proxies import LazyProvider
-from miniharness.types import LLMResponse, Message, ToolSpec, Usage
+from miniharness.providers.streaming import as_stream, stream_from
+from miniharness.types import Completed, LLMResponse, Message, StreamChunk, TextDelta, ToolSpec, Usage
 
 
 class _Wrapper:
@@ -32,6 +40,10 @@ class _Wrapper:
     @property
     def model(self) -> str:
         return self.inner.model
+
+    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+        # Safe default: this wrapper's own complete(), replayed. Correct, but not live
+        yield from as_stream(self.complete(messages, tools))
 
 
 class UsageTracker(_Wrapper):
@@ -50,6 +62,25 @@ class UsageTracker(_Wrapper):
             raise
         self.calls.append(response.usage or Usage())
         return response
+
+    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+        started = recorded = False
+        try:
+            for chunk in stream_from(self.inner, messages, tools):
+                if isinstance(chunk, Completed):
+                    self.calls.append(chunk.response.usage or Usage())
+                    recorded = True
+                started = True
+                yield chunk
+        except MalformedResponseError as e:
+            self.calls.append(e.usage or Usage())
+            recorded = True
+            raise
+        finally:
+            if started and not recorded:
+                # Abandoned or broken mid-stream: tokens were generated and billed,
+                # but the usage never arrived. Unknown cost makes the budget fail closed.
+                self.calls.append(Usage())
 
     @property
     def total(self) -> Usage:
@@ -74,13 +105,20 @@ class BudgetGuard(_Wrapper):
         self.limit_usd = limit_usd
 
     def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
+        self._check()
+        return self.inner.complete(messages, tools)
+
+    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+        self._check()  # before the first token, like before a call
+        yield from stream_from(self.inner, messages, tools)
+
+    def _check(self) -> None:
         spent = self.tracker.total.cost_usd
         if spent is None:
             # Fail closed: a budget we can't measure is a budget we can't enforce
             raise BudgetExceeded("Cost of an earlier call is unknown; can't enforce the budget")
         if spent >= self.limit_usd:
             raise BudgetExceeded(f"Spent ${spent:.6f} of ${self.limit_usd:.6f}")
-        return self.inner.complete(messages, tools)
 
 
 class Retry(_Wrapper):
@@ -107,6 +145,20 @@ class Retry(_Wrapper):
                 self.retries += 1
         raise AssertionError("unreachable")
 
+    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+        """Retries only while no text has been passed on: the consumer can't un-see tokens."""
+        for attempt in range(1, self.attempts + 1):
+            shown = False
+            try:
+                for chunk in stream_from(self.inner, messages, tools):
+                    shown = shown or isinstance(chunk, TextDelta)
+                    yield chunk
+                return
+            except self.on:
+                if shown or attempt == self.attempts:
+                    raise
+                self.retries += 1
+
 
 class DiskCache(_Wrapper):
     """Replays stored responses for identical requests. For development only.
@@ -132,6 +184,19 @@ class DiskCache(_Wrapper):
         self.path.mkdir(parents=True, exist_ok=True)
         file.write_bytes(pickle.dumps(response))
         return response
+
+    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+        file = self.path / f"{self.key(messages, tools)}.pkl"
+        if file.exists():
+            self.hits += 1
+            yield from as_stream(pickle.loads(file.read_bytes()))  # a hit replays all at once
+            return
+        for chunk in stream_from(self.inner, messages, tools):
+            if isinstance(chunk, Completed):
+                self.misses += 1
+                self.path.mkdir(parents=True, exist_ok=True)
+                file.write_bytes(pickle.dumps(chunk.response))
+            yield chunk
 
     @property
     def namespace(self) -> str:
@@ -225,3 +290,36 @@ class FallbackChain:
             self.served_by = provider
             return response
         raise AssertionError("unreachable")
+
+    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+        """Falls back only while no text has been passed on, for the same reason as Retry.
+
+        A refusal is detected at Completed, so a refusal that already streamed its
+        text is kept: switching then would show two answers glued together.
+        """
+        last = len(self.providers) - 1
+        for i, provider in enumerate(self.providers):
+            shown = False
+            response = None  # Completed is held back until we know we're keeping this answer
+            try:
+                for chunk in stream_from(provider, messages, tools):
+                    if isinstance(chunk, TextDelta):
+                        shown = True
+                        yield chunk
+                    else:
+                        response = chunk.response
+            except self.on as e:
+                self.failures.append((provider, f"{type(e).__name__}: {e}"))
+                if shown or i == last:
+                    raise
+                continue
+            if response is None:
+                raise RuntimeError("Stream ended without a Completed chunk")
+            if self.on_refusal and response.stop_reason == "refusal" and i < last and not shown:
+                self.failures.append((provider, "refusal"))
+                continue
+            self.served_by = provider
+            yield Completed(response)
+            return
+        raise AssertionError("unreachable")
+

@@ -1090,3 +1090,156 @@ from `agent.messages` afterwards.
 
 ### D155. Command line: `python -m miniharness.trace FILE [--html OUT]`
 **Status:** accepted (made during implementation)
+
+---
+
+## Stage 15: Iterator
+
+### D156. A provider's `stream()` yields `TextDelta`s and ends with one `Completed(response)` (your call)
+**Status:** accepted
+- **Options:** typed chunks ending in `Completed` · a generator that yields strings and *returns* the
+  `LLMResponse` · an `on_token` callback on `complete()`.
+- **Why:** a plain `for` loop sees everything, including the final response. With the return-value
+  version, `for` silently drops the response and only `yield from` gets it. The callback is push
+  (Observer), not Iterator.
+- **Cost:** consumers `match` on two chunk types. `collect()` drains a stream for callers that only
+  want the response.
+
+### D157. `stream()` is optional; `stream_from()` replays `complete()` for providers without one
+**Status:** accepted (made during implementation)
+- The `Provider` protocol still only requires `complete()`, so every existing provider, test fake and
+  user-written provider keeps working. `stream_from(provider, ...)` uses `stream()` if it exists,
+  otherwise `as_stream(complete())`.
+- `stream_from` is a generator, so nothing is called until the first chunk is requested. Lazy
+  everywhere: `BudgetGuard` checks and `LazyProvider` builds on first `next()`, not on `stream()`.
+- **Revisit when** a type checker should enforce it: a separate `StreamingProvider` protocol.
+
+### D158. Wrappers: a safe default `stream()` via their own `complete()`, plus opt-in overrides (your call)
+**Status:** accepted
+- **Options:** safe default + overrides · forward to `inner.stream()` by default · stream from base
+  providers only.
+- **Why:** `_Wrapper.stream()` yields `as_stream(self.complete(...))`. A wrapper that knows nothing
+  about streaming still applies its behavior and is just not live (tested with a `Shout` wrapper).
+  Forwarding by default would have **silently skipped the budget and the usage tracking**: the Decorator
+  stack only works if every path goes through every layer.
+- All seven wrappers stream live: `UsageTracker` (records at `Completed`), `BudgetGuard` (checks before
+  the first token), `Retry`, `FallbackChain`, `CircuitBreaker`, `DiskCache`, `LazyProvider`.
+- **Cost:** each wrapper now has two code paths to keep in step.
+
+### D159. Retry and FallbackChain only switch before the first text token
+**Status:** open (made during implementation)
+- The consumer can't un-see tokens. Retrying after "half" was shown would print "halfok" (tested).
+- **Consequences:** a `MalformedResponseError` (bad tool JSON) is detected at the end of the stream, so it
+  is only retried if the model streamed no text first. A refusal that already streamed text is kept,
+  not passed to the backup.
+- **Revisit when** this bites: buffer text while the stream might still turn into tool calls, or add a
+  "retracted" chunk that tells consumers to discard what they printed.
+
+### D160. A stream that produced output but never completed counts as unknown cost
+**Status:** open (made during implementation)
+- `UsageTracker` records an empty `Usage()` (cost `None`) when a stream breaks or is abandoned after its
+  first chunk. Those tokens were generated and billed, but the usage chunk never arrived. With unknown
+  spend, `BudgetGuard` fails closed (D48).
+- **Live:** `examples/stream.py --max-words 12` stopped mid-story, and the run's total became "unknown".
+  That's honest, but one Ctrl-C now blocks further calls under a budget.
+- **Revisit when** that's annoying: look up the real cost afterwards (OpenRouter's generation endpoint
+  takes the response id), or estimate it from the streamed text.
+
+### D161. `CircuitBreaker` states expose `admit` / `succeeded` / `failed` instead of `call(fn)`
+**Status:** accepted (made during implementation)
+- `call(fn)` wrapped a function returning a response, which can't cover a stream whose outcome is only
+  known after the last chunk. With three hooks, `complete()` and `stream()` share one state machine.
+  The existing breaker tests passed unchanged.
+- A stream the consumer abandons counts as neither success nor failure (tested).
+
+### D162. A replayed response streams its whole text as one `TextDelta`
+**Status:** accepted (made during implementation)
+- `as_stream()` (used by cache hits, the safe wrapper default and non-streaming providers) yields the
+  text at once, then `Completed`. Consumers that only print tokens still show the answer.
+  Live: a cache hit printed the full sentence at 0.0s.
+
+### D163. Generator steps: `iter_step()` yields mid-step and returns the next state (your call)
+**Status:** accepted
+- **Options:** generator steps · a worker thread feeding a queue · yielding only between steps.
+- **Shape:** `AgentState.iter_step()` defaults to `return self.step(agent)` (plus an unreachable
+  `yield`, which makes it a generator). Only `Thinking` overrides it to yield after each token.
+  `step()` drains it, and `drain()` reads the next state from `StopIteration.value`.
+- **Why:** live, single-threaded and deterministic (D99). It needs no threads, and `break` needs no
+  cancellation protocol.
+- **Cost:** the pull view can only interrupt where a generator yields. A sub-agent runs inside the
+  parent's tool call, which doesn't yield, so in `iter_run()` its tokens arrive in one batch when the
+  tool returns. Push observers see them live (`ConsolePrinter` did, in the `--delegate` run).
+
+### D164. The agent scope is entered around each resume, never held across a `yield`
+**Status:** accepted (made during implementation)
+- A ContextVar set inside a generator stays set in the *caller's* context while the generator is paused.
+  Holding `agent_scope` across a yield would tag the consumer's own code (and anything it emits) as the
+  agent. `_iter_step()` re-enters the scope for each `next()` (tested: the loop body sees depth -1).
+- This is easy to get wrong, because generators and context managers look like they compose.
+
+### D165. Tokens are `TokenStreamed` events on the bus; `iter_run()` is a pull view of the bus (your call)
+**Status:** accepted
+- **Options:** an event on the bus · tokens only in the iterator.
+- **Why:** one event vocabulary. `iter_run()` subscribes a buffer and empties it whenever the agent
+  pauses, so pull and push see the same events in the same order (tested with `==`). This closes the
+  `on_token` item left open in stage 10.
+- `ConsolePrinter` prints tokens inline. `JsonlTracer` skips them unless `tokens=True`, and the trace tree
+  ignores them.
+
+### D166. Streaming is opt-in per agent: `Agent(stream=True)`, with a separate `think_stream()` hook
+**Status:** open (made during implementation)
+- `Thinking` calls `think_stream()` when `agent.stream` is true and `think()` otherwise. `fork(stream=True)`
+  is allowed.
+- **Risk:** a subclass that overrides only `think()` is bypassed once streaming is on. The alternative is
+  defining `think()` as `collect(think_stream())`, which makes the streaming hook the only one.
+- **Revisit when** a subclass overrides thinking for real (e.g. stage 16's facade or a Bridge).
+
+### D167. `iter_run()` is lazy, and breaking out leaves the agent at the start of the interrupted step
+**Status:** accepted (made during implementation)
+- Nothing starts until the first `next()`. A `break` mid-stream closes the step generator, which closes
+  the provider stream (and its HTTP connection, via the providers' `finally`). The model call is
+  counted, nothing is appended, and the state is still `thinking`, so `step()` thinks again from the
+  same point (tested).
+- **Cleanup timing:** after a `break`, CPython closes the generator immediately by reference counting.
+  `examples/stream.py` uses `contextlib.closing()` to make that explicit and portable.
+
+### D168. `iter_continue()` drives the agent from its current state
+**Status:** accepted (made during implementation)
+- `follow_up()` and `restore()` move the agent without running it. `iter_continue()` is their pull-based
+  counterpart to the `while not agent.done: agent.step()` loop.
+
+### D169. Only text is streamed
+**Status:** open (made during implementation)
+- Tool-call argument fragments are assembled by the adapter and appear only in `Completed`. Reasoning
+  tokens (DeepSeek's `delta.reasoning`, Anthropic's thinking blocks) aren't surfaced. `ModelCalled`
+  has no time-to-first-token.
+- **Revisit when** a UI wants "writing file…" while arguments stream (a `ToolCallDelta` chunk), or
+  latency matters (a `first_token_s` field, which changes the trace format, D147).
+
+### D170. Anthropic streams through the SDK's `messages.stream()` helper
+**Status:** accepted, **unverified live** (made during implementation)
+- The helper assembles tool-use and thinking blocks (with signatures), and `get_final_message()` returns
+  the same object `create()` would, so `raw` replay keeps working. Tested with a fake client only: the
+  Anthropic key in `.env` returns 401.
+
+### D171. How stage 15 touches the earlier open decisions
+**Status:** notes (made during implementation)
+- **D99 (synchronous delivery):** still synchronous. Pull adds natural backpressure: the agent only
+  advances when the consumer asks for the next event.
+- **D101 (no `RunFailed`):** a pull consumer gets the exception directly from its `for` loop, which is
+  better than push, where observers never hear about it. The bus still has no `RunFailed`.
+- **D100 (live objects):** `iter_run()` yields the same objects observers get.
+- **D39 (sequential tools):** `ActingOnTools` doesn't yield between tools. With concurrent tools, the
+  pull view would need a merge point.
+
+### D172. Code after a generator's last `yield` may never run: wrappers act *at* `Completed`, consumers drain to the end
+**Status:** accepted (bug found in review, made during implementation)
+- **Bug:** `Thinking` returned as soon as it saw `Completed`, then closed the stream. `CircuitBreaker.stream()`
+  recorded success *after* its loop, so under an agent a success never reset the failure count, and two
+  failures with a success between them would have opened the breaker. A regression test reproduces it.
+- **Fix, on both sides:** `collect()` and `Thinking` read the stream to its end, and the breaker records
+  success when it sees `Completed`, before passing it on. Every other wrapper already did its work
+  before yielding `Completed`.
+- **Lesson:** with push, the producer decides when it's finished. With pull, the *consumer* does, and it can
+  stop at any `yield`. A producer's cleanup belongs in `finally`, and its bookkeeping before the last
+  `yield`.

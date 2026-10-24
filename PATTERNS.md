@@ -303,3 +303,38 @@ One entry per pattern, written when you apply it. Template:
 - **Try it:** write a `SlowestCalls` visitor that lists the three slowest model calls with their agent.
   Did you touch any node class?
 - **Your notes:**
+
+---
+
+## Iterator (stage 15)
+
+- **Problem:** everything returned only when it was finished. You stared at a blank terminal until the whole
+  answer arrived, and the only way to watch a run was to subscribe to it (push), with no way to drive it
+  from a plain loop or stop it mid-answer.
+- **Shape:** two iterators. `provider.stream()` yields `TextDelta`s, then one `Completed(response)`.
+  `agent.iter_run(task)` yields every event of the run (`TokenStreamed`, `ModelCalled`, `ToolCalled`,
+  ...) as it happens. Inside, each state's `iter_step()` is a generator that pauses at every token and
+  *returns* the next state.
+- **The pattern dissolved into the language:** GoF Iterator is a class with `has_next()`/`next()` that
+  keeps traversal state outside the collection. A Python generator *is* that class, written by the
+  compiler: the paused stack frame holds the traversal state, and `yield` is `next()`. Not one
+  `__next__` was hand-written this stage.
+- **Iterator vs Observer (pull vs push):** the same events, two directions of control. With Observer, the
+  subject decides when you hear about something. With Iterator, you decide when the subject continues.
+  Pull gives backpressure and `break` (cancellation) for free. Push reaches every listener, including
+  sub-agents mid-tool-call (DECISIONS.md D163). `iter_run()` is built *on* the bus: a buffer subscriber,
+  emptied every time the agent pauses.
+- **Patterns compose, and collide:** every Decorator needed a streaming path, and forwarding
+  `stream()` by default would have silently skipped the budget (D158). A stream's outcome is only known
+  at the end, which forced the circuit breaker's State classes into before/after hooks (D161), and
+  "retry" stops meaning anything once the user has seen half an answer (D159).
+- **Live lessons:** stopping `examples/stream.py` after 12 words left the agent in `thinking`, resumable,
+  with the HTTP stream closed. But the run's cost became *unknown*, because the usage only arrives at
+  the end (D160). Separately, a ContextVar held across a `yield` leaks into the caller (D164).
+- **Harness connection:** Claude Code and the Agent SDKs stream message deltas to the UI and expose the
+  agent loop as an async iterator of messages (`for await (const message of query(...))`). That's
+  `iter_run()`. Their "interrupt" is our `break`.
+- **Try it:** give `Trace` a `walk()` generator that yields every node depth-first (the classic Iterator
+  over a Composite), then rewrite `CostSummary` as a loop over `walk()`. What did you lose compared with
+  the Visitor's double dispatch, and what got simpler?
+- **Your notes:**

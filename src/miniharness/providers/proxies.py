@@ -4,11 +4,12 @@ Same interface as a decorator, different intent: a decorator adds behavior,
 while a proxy decides whether, when, or where the real object is reached.
 """
 
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from miniharness.providers.base import Provider
 from miniharness.providers.registry import create_provider
-from miniharness.types import LLMResponse, Message, ToolSpec
+from miniharness.providers.streaming import stream_from
+from miniharness.types import LLMResponse, Message, StreamChunk, ToolSpec
 
 
 class LazyProvider:
@@ -41,6 +42,9 @@ class LazyProvider:
 
     def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
         return self.materialize().complete(messages, tools)
+
+    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+        yield from stream_from(self.materialize(), messages, tools)
 
 
 def lazy_provider(spec: str, **kwargs: Any) -> LazyProvider:

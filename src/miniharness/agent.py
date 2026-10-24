@@ -18,19 +18,23 @@ that's where RunStarted, StateChanged and RunFinished are emitted.
 
 Stage 11 (Memento + Prototype): `checkpoint()` / `restore()` snapshot and
 rewind the agent (and its file changes); `fork()` copies it to try a variant.
+
+Stage 15 (Iterator): with `stream=True` the model's text arrives as
+TokenStreamed events. `iter_run()` is the pull-based twin of the EventBus:
+the same events, but the caller asks for each one with a `for` loop.
 """
 
 import copy
 import warnings
-from typing import Any
+from typing import Any, Callable, Iterator
 
 from miniharness.checkpoint import Checkpoint
-from miniharness.events import EventBus, RunFinished, RunStarted, StateChanged, agent_scope
+from miniharness.events import Event, EventBus, RunFinished, RunStarted, StateChanged, agent_scope
 from miniharness.lifecycle import AgentState, Done, Idle, Thinking, from_snapshot
 from miniharness.prompts import default_prompt
-from miniharness.providers import Provider
+from miniharness.providers import Provider, stream_from
 from miniharness.tools import Toolbox, ToolSet, default_tools
-from miniharness.types import LLMResponse, Message, ToolCall
+from miniharness.types import LLMResponse, Message, StreamChunk, ToolCall
 
 
 class Agent:
@@ -42,12 +46,14 @@ class Agent:
         max_steps: int = 10,
         events: EventBus | None = None,
         name: str = "agent",
+        stream: bool = False,
     ):
         self.name = name  # tags this agent's events; sub-agents use their tool name
         self.provider = provider
         self.tools = tools if tools is not None else Toolbox(default_tools())
         self.system_prompt = system_prompt if system_prompt is not None else default_prompt().build()
         self.max_steps = max_steps
+        self.stream = stream  # think via provider.stream(), emitting TokenStreamed events
         self.events = events if events is not None else EventBus()
         self.messages: list[Message] = []
         self.state: AgentState = Idle()
@@ -77,11 +83,62 @@ class Agent:
         return self.state
 
     def step(self) -> AgentState:
-        with agent_scope(self.name):
-            self._transition(self.state.step(self))
-            if self.state.terminal:
-                self.events.emit(RunFinished(self.state.name, self.state.answer))
+        for _ in self._iter_step():
+            pass
         return self.state
+
+    def _iter_step(self) -> Iterator[None]:
+        """One step as a generator that pauses whenever the state has news (a token).
+
+        The agent scope is entered around each resume, never held across a `yield`:
+        a ContextVar set in a generator stays set in the *caller* while it's paused,
+        so the caller's own code would be tagged as this agent (DECISIONS.md D164).
+        """
+        work = self.state.iter_step(self)
+        try:
+            while True:
+                with agent_scope(self.name):
+                    try:
+                        next(work)
+                    except StopIteration as stop:
+                        self._transition(stop.value)
+                        if self.state.terminal:
+                            self.events.emit(RunFinished(self.state.name, self.state.answer))
+                        return
+                yield
+        finally:
+            work.close()  # abandoned mid-step: closes the provider's stream right away
+
+    # --- iterator --------------------------------------------------------------
+
+    def iter_run(self, task: str) -> Iterator[Event]:
+        """`run()` as an iterator of events: `for event in agent.iter_run(task): ...`
+
+        Yields every event the bus delivers during the run (including sub-agents'),
+        in order, as soon as the agent pauses. Stopping early (`break`) leaves the
+        agent at the start of the step it was in, so `step()` can carry on later.
+        """
+        return self._iter_events(lambda: self.start(task))
+
+    def iter_continue(self) -> Iterator[Event]:
+        """Like `iter_run`, from the current state (after `follow_up()` or `restore()`)."""
+        return self._iter_events(None)
+
+    def _iter_events(self, begin: Callable[[], Any] | None) -> Iterator[Event]:
+        # Push -> pull: a subscriber buffers what the bus pushes, and the buffer is
+        # emptied every time the agent pauses. Same events, same order as observers see.
+        buffer: list[Event] = []
+        unsubscribe = self.events.subscribe(buffer.append)
+        try:
+            if begin is not None:
+                begin()
+                yield from _flush(buffer)
+            while not self.done:
+                for _ in self._iter_step():
+                    yield from _flush(buffer)
+                yield from _flush(buffer)
+        finally:
+            unsubscribe()
 
     # --- memento -------------------------------------------------------------
 
@@ -124,7 +181,7 @@ class Agent:
         fork its own workspace and undo history.
         """
         checkpoint = checkpoint if checkpoint is not None else self.checkpoint()
-        unknown = set(overrides) - {"provider", "tools", "system_prompt", "max_steps", "events", "name"}
+        unknown = set(overrides) - {"provider", "tools", "system_prompt", "max_steps", "events", "name", "stream"}
         if unknown:
             raise TypeError(f"Can't override {sorted(unknown)}")
         clone = copy.copy(self)  # same class: a fork of a subclass is that subclass
@@ -162,6 +219,10 @@ class Agent:
     def think(self, messages: list[Message]) -> LLMResponse:
         return self.provider.complete(messages, self.tools.specs())
 
+    def think_stream(self, messages: list[Message]) -> Iterator[StreamChunk]:
+        """Used instead of `think()` when `stream=True`. Override both to change thinking."""
+        return stream_from(self.provider, messages, self.tools.specs())
+
     def act(self, tool_calls: list[ToolCall]) -> list[Message]:
         return [
             Message(role="tool", content=self.tools.execute(tc), tool_call_id=tc.id)
@@ -172,3 +233,8 @@ class Agent:
         if response.stop_reason not in ("end", "tool_calls"):
             return f"[stopped: {response.stop_reason}] {response.message.content}"
         return response.message.content
+
+
+def _flush(buffer: list[Event]) -> Iterator[Event]:
+    while buffer:
+        yield buffer.pop(0)

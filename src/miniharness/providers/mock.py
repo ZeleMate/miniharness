@@ -1,5 +1,8 @@
+import re
+from typing import Iterator
+
 from miniharness.providers.registry import register_provider
-from miniharness.types import LLMResponse, Message, ToolSpec
+from miniharness.types import Completed, LLMResponse, Message, StreamChunk, TextDelta, ToolSpec
 
 
 @register_provider("mock")
@@ -7,6 +10,7 @@ class MockProvider:
     """Replays scripted responses and records every conversation it was sent.
 
     A scripted item that is an exception gets raised instead of returned.
+    `stream()` replays a response's text word by word, then the response itself.
     """
 
     def __init__(self, responses: list[LLMResponse | Exception] | None = None, model: str = "mock"):
@@ -22,3 +26,9 @@ class MockProvider:
         if isinstance(item, Exception):
             raise item
         return item
+
+    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+        response = self.complete(messages, tools)
+        for word in re.findall(r"\S+\s*|\s+", response.message.content):
+            yield TextDelta(word)
+        yield Completed(response)

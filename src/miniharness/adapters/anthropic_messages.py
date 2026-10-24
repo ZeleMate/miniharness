@@ -5,9 +5,9 @@ prompt is a separate parameter, tool calls are `tool_use` content blocks, and
 tool results go inside a *user* message.
 """
 
-from typing import Any
+from typing import Any, Iterator
 
-from miniharness.types import LLMResponse, Message, ToolCall, ToolSpec, Usage
+from miniharness.types import Completed, LLMResponse, Message, StreamChunk, TextDelta, ToolCall, ToolSpec, Usage
 
 _STOP_REASONS = {"tool_use": "tool_calls", "end_turn": "end"}
 
@@ -52,6 +52,16 @@ class AnthropicMessagesAdapter:
             stop_reason=_STOP_REASONS.get(response.stop_reason, response.stop_reason),
             usage=self._usage(response),
         )
+
+    def from_stream(self, stream: Any) -> Iterator[StreamChunk]:
+        """Translate the SDK's `messages.stream()` helper: text deltas, then the final message.
+
+        The SDK assembles tool-use blocks (and thinking blocks with their signatures)
+        itself, so the final message is the same object `create()` would return.
+        """
+        for text in stream.text_stream:
+            yield TextDelta(text)
+        yield Completed(self.from_wire(stream.get_final_message()))
 
     def _usage(self, response: Any) -> Usage | None:
         usage = getattr(response, "usage", None)
