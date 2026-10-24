@@ -201,3 +201,22 @@ One entry per pattern, written when you apply it. Template:
 - **Try it:** add a `Paused` agent state that `step()` won't leave until `resume()` is
   called. What would it need to survive a process restart? (That's stage 11.)
 - **Your notes:**
+
+---
+
+## Observer (stage 10)
+
+- **Problem:** to watch the agent work (console, trace file, tests), you had to edit the
+  Agent or reconstruct events from `agent.messages` after the run.
+- **Shape:** the Agent and Toolbox `emit()` typed events (`StateChanged`, `ModelCalled`,
+  `ToolCalled`, ...) on a shared `EventBus`. Subscribers are plain callables. Emitters don't
+  know who's listening or whether anyone is.
+- **The key property:** subjects don't depend on observers. A broken observer can't break
+  the run (DECISIONS.md D95), and an observer can't veto anything (D104).
+- **Observer vs Proxy:** both can sit next to a provider. A proxy runs *before* the call and
+  can stop it. An observer hears *after* and can only react.
+- **Patterns compose:** stage 9's lifecycle made this easy, because every transition already
+  went through one method.
+- **Try it:** write a `Stats` observer that counts tool calls per tool and prints a summary
+  on `RunFinished`. Did you need to touch the Agent?
+- **Your notes:**

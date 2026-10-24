@@ -10,9 +10,11 @@ The states call the agent's Template Method hooks (think, act, finish), so
 subclasses that override a hook keep working.
 """
 
+import time
 from typing import TYPE_CHECKING
 
 from miniharness.errors import StopRun
+from miniharness.events import ModelCalled
 from miniharness.types import ToolCall
 
 if TYPE_CHECKING:
@@ -41,10 +43,20 @@ class Thinking(AgentState):
         if agent.model_calls >= agent.max_steps:
             raise RuntimeError(f"Agent did not finish within {agent.max_steps} steps")
         agent.model_calls += 1
+        started = time.monotonic()
         try:
             response = agent.think(agent.messages)
         except StopRun as e:
             return Stopped(e.reason, str(e))
+        agent.events.emit(
+            ModelCalled(
+                model=agent.provider.model,
+                stop_reason=response.stop_reason,
+                tool_calls=len(response.message.tool_calls),
+                usage=response.usage,
+                duration_s=time.monotonic() - started,
+            )
+        )
         agent.messages.append(response.message)
         if response.stop_reason == "tool_calls":
             return ActingOnTools(response.message.tool_calls)

@@ -3,6 +3,8 @@
 from types import MappingProxyType
 from typing import Mapping, Protocol
 
+from miniharness.events import EventBus, ToolCalled
+
 from miniharness.tools.base import IrreversibleError, Tool, ToolCommand
 from miniharness.tools.policy import Decision, PolicyChain, Verdict, default_policy
 from miniharness.types import ToolCall, ToolSpec
@@ -17,7 +19,7 @@ class ToolSet(Protocol):
 
 
 class Toolbox:
-    def __init__(self, tools: list[Tool], policy: PolicyChain | None = None):
+    def __init__(self, tools: list[Tool], policy: PolicyChain | None = None, events: EventBus | None = None):
         self._tools: dict[str, Tool] = {}
         for tool in tools:
             if tool.name in self._tools:
@@ -27,6 +29,7 @@ class Toolbox:
         self.policy = policy if policy is not None else default_policy()
         self.history: list[ToolCommand] = []
         self.denied: list[tuple[ToolCall, Decision]] = []
+        self.events = events
 
     @property
     def tools(self) -> Mapping[str, Tool]:
@@ -42,18 +45,23 @@ class Toolbox:
         """Run a call and return what the model should see. Errors become text."""
         tool = self._tools.get(call.name)
         if tool is None:
-            return f"Error: unknown tool {call.name!r}"
+            return self._report(call, f"Error: unknown tool {call.name!r}", None)
         decision = self.policy.decide(call, tool)
         if decision.verdict is not Verdict.ALLOW:
             self.denied.append((call, decision))
-            return f"Permission denied: {decision.reason}"
+            return self._report(call, f"Permission denied: {decision.reason}", decision)
         command = ToolCommand(tool, call)
         try:
             result = command.execute()
         except Exception as e:  # report failures back to the model
-            return f"Error: {type(e).__name__}: {e}"
+            return self._report(call, f"Error: {type(e).__name__}: {e}", decision, failed=True)
         self.history.append(command)
-        return result.output
+        return self._report(call, result.output, decision)
+
+    def _report(self, call: ToolCall, output: str, decision: Decision | None, failed: bool = False) -> str:
+        if self.events is not None:
+            self.events.emit(ToolCalled(call, output, decision, failed))
+        return output
 
     def undo_last(self) -> ToolCommand | None:
         """Undo the most recent command that changed something.

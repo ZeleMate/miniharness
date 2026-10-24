@@ -676,3 +676,81 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 ### D92. `start()` works from `Idle` or a finished state; it refuses while running
 **Status:** accepted (made during implementation)
 - Restarting resets messages and the model-call count. The Toolbox history is *not* reset (D40).
+
+---
+
+## Stage 10: Observer
+
+### D93. Typed, frozen event dataclasses delivered through an `EventBus` (your call)
+**Status:** accepted
+- **Options:** typed events plus a bus · an observer base class with `on_*` hook methods.
+- **Why:** adding an event type never changes an interface, so existing observers keep
+  working. Subscribers pick events with `match`.
+- **Cost:** less discoverable than hook methods. You read `events.py` to see what exists.
+
+### D94. One shared bus, injected into the Agent and the Toolbox (your call)
+**Status:** accepted
+- Only the Toolbox knows a call's policy decision, so it emits `ToolCalled(decision=...)`.
+  The Agent emits run, state and model events. With one bus, one subscriber sees the
+  whole story in order.
+
+### D95. A failing observer is isolated, recorded and warned about (your call)
+**Status:** accepted
+- A broken observer can't change the run's outcome (tested with a handler that
+  divides by zero). This keeps the defining property of Observer: subjects don't depend
+  on their observers.
+
+### D96. Two observers: `ConsolePrinter` and `JsonlTracer` (your call)
+**Status:** accepted. The example now shows progress live instead of reconstructing it
+from `agent.messages` afterwards.
+
+### D97. Events are emitted from framework code, not from overridable hooks
+**Status:** accepted (made during implementation)
+- `StateChanged` comes from `Agent._transition` and `ModelCalled` from `Thinking.step`,
+  not from `think()`. A subclass that overrides `think()` still produces events (tested).
+  If the emit lived inside the hook, every override would have to remember `super()`.
+
+### D98. The Agent always has a bus; it doesn't share it with the Toolbox automatically
+**Status:** open (made during implementation)
+- `Agent(..., events=None)` creates an empty bus, so `agent.events.subscribe(...)` always
+  works. The Toolbox's bus is optional, and the caller must pass the same one to both.
+- **Risk:** forget to pass it to the Toolbox, and `ToolCalled` events silently never arrive.
+  Auto-wiring (the Agent handing its bus to its tools) would fix that, at the cost of the
+  Agent reaching into a component it otherwise treats as a black box (D76).
+
+### D99. Delivery is synchronous, in the emitting thread
+**Status:** accepted (made during implementation)
+- Simple, ordered and deterministic in tests. The cost is that a slow observer slows the
+  agent. `JsonlTracer` opens the file once per event. A queue with a background writer
+  would decouple them, but adds threads and shutdown handling.
+
+### D100. Events carry live objects; frozen is shallow
+**Status:** open (made during implementation)
+- `ToolCalled.call` is the same `ToolCall` the agent uses. An observer that mutates
+  `call.arguments` would change the agent's data. Freezing only stops *reassigning* fields.
+  Copying on emit would be safer but costs a copy per event.
+
+### D101. No event for unexpected errors
+**Status:** open (made during implementation)
+- If a provider raises something that isn't `StopRun` (e.g. the `max_steps` `RuntimeError`,
+  D90), the run aborts and observers never see `RunFinished`. A `RunFailed(error)` event
+  emitted from `run()` would close the gap.
+
+### D102. The events ↔ tools import cycle is broken with a `TYPE_CHECKING` import
+**Status:** accepted (made during implementation)
+- `events.py` only needs `Decision` as an annotation. With
+  `from __future__ import annotations`, it never imports the tools package at runtime,
+  so the Toolbox can import events at the top of its module.
+
+### D103. `--steps` removed; a stage 7 bug fixed in the example
+**Status:** accepted (made during implementation)
+- The console printer shows every state, so `--steps` was redundant.
+- **Bug found while editing:** the fallback report looped with `for provider, why in ...`,
+  overwriting the `provider` variable that the cache summary read next. With
+  `--fallback --cache` and a failure, it would have crashed. The loop now uses `link`.
+
+### D104. Observers can watch but can't veto
+**Status:** accepted (made during implementation)
+- `UsageTracker` could almost be an observer of `ModelCalled`. But `BudgetGuard` must stop a
+  call *before* it happens, and an observer only hears about events after the fact. This is
+  why the budget is a proxy (D72), not an observer. Observer is for *reacting*, not *controlling*.

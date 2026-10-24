@@ -19,7 +19,7 @@ uv run examples/hello.py --rewind "Write a haiku to haiku.txt"   # asks before w
 uv run examples/hello.py --cache --budget 0.01                  # dev cache + spend limit
 uv run examples/hello.py -m anthropic --fallback openrouter      # fall back on outages
 uv run examples/hello.py --read-only "Write a haiku to haiku.txt"  # model can't see write tools
-uv run examples/hello.py --steps                                  # print each lifecycle state
+uv run examples/hello.py --trace run.jsonl                        # also write a JSONL event trace
 ```
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
@@ -33,6 +33,8 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 | `src/miniharness/lifecycle.py` | Agent lifecycle states: `start()` / `step()` (stage 9: State) |
 | `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory); usage/budget/retry/cache wrappers (stage 6: Decorator); `FallbackChain` (stage 7); `LazyProvider` (stage 8: Proxy); `CircuitBreaker` (stage 9: State) |
 | `src/miniharness/adapters/` | Our types ↔ OpenAI / Anthropic wire formats (stage 2: Adapter) |
+| `src/miniharness/events.py` | Typed events + `EventBus` (stage 10: Observer) |
+| `src/miniharness/observers.py` | `ConsolePrinter`, `JsonlTracer` |
 | `src/miniharness/prompts.py` | `SystemPromptBuilder` + `default_prompt()` director (stage 4: Builder) |
 | `src/miniharness/tools/` | `Tool` classes, `ToolCommand`, and the `Toolbox` invoker with undo (stage 5: Command); `PolicyChain` permissions (stage 7: Chain of Responsibility); `ToolboxView` (stage 8: Proxy) |
 | `DECISIONS.md` | Architecture decision log: options, trade-offs, open questions |
@@ -53,7 +55,7 @@ Only add a pattern once you feel the pain it solves.
 | 7 | Tool-call policy chain with human approval; model fallbacks | Chain of Responsibility ✅ |
 | 8 | Lazy providers; read-only toolbox views | Proxy ✅ |
 | 9 | Circuit breaker; agent lifecycle with `step()` | State ✅ |
-| 10 | `on_token`, `on_tool_call` and `on_error` hooks | Observer |
+| 10 | Typed events on a shared bus; live console + JSONL trace | Observer ✅ |
 | 11 | Checkpoint, rewind, fork; clone agent configs | Memento, Prototype |
 | 12 | Agents as tools; sub-agent trees | Composite |
 | 13 | Coordinator routing between agents | Mediator |

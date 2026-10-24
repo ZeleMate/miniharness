@@ -12,8 +12,12 @@ each one in a command object and keeps a history that can be undone.
 
 Stage 9 (State): the loop is a state machine (see lifecycle.py). `step()`
 advances one transition; `run()` is `start()` plus stepping until done.
+
+Stage 10 (Observer): every transition goes through `start()`/`step()`, so
+that's where RunStarted, StateChanged and RunFinished are emitted.
 """
 
+from miniharness.events import EventBus, RunFinished, RunStarted, StateChanged
 from miniharness.lifecycle import AgentState, Idle, Thinking
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider
@@ -28,11 +32,13 @@ class Agent:
         system_prompt: str | None = None,
         tools: ToolSet | None = None,
         max_steps: int = 10,
+        events: EventBus | None = None,
     ):
         self.provider = provider
         self.tools = tools if tools is not None else Toolbox(default_tools())
         self.system_prompt = system_prompt if system_prompt is not None else default_prompt().build()
         self.max_steps = max_steps
+        self.events = events if events is not None else EventBus()
         self.messages: list[Message] = []
         self.state: AgentState = Idle()
         self.model_calls = 0
@@ -44,12 +50,19 @@ class Agent:
             raise RuntimeError(f"Agent is already running ({self.state.name})")
         self.messages = self.initial_messages(task)
         self.model_calls = 0
-        self.state = Thinking()
+        self.events.emit(RunStarted(task))
+        self._transition(Thinking())
         return self.state
 
     def step(self) -> AgentState:
-        self.state = self.state.step(self)
+        self._transition(self.state.step(self))
+        if self.state.terminal:
+            self.events.emit(RunFinished(self.state.name, self.state.answer))
         return self.state
+
+    def _transition(self, new: AgentState) -> None:
+        old, self.state = self.state, new
+        self.events.emit(StateChanged(old.name, new.name))
 
     @property
     def done(self) -> bool:
