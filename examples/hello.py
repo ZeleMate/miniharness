@@ -6,10 +6,13 @@
 """
 
 import argparse
+import os
+from datetime import date
 
 from dotenv import load_dotenv
 
 from miniharness import Agent
+from miniharness.prompts import default_prompt
 from miniharness.providers import available_providers, create_provider
 
 
@@ -24,7 +27,13 @@ def main() -> None:
     args = parser.parse_args()
 
     provider = create_provider(args.model)
-    agent = Agent(provider=provider)
+    system_prompt = (
+        default_prompt()
+        .instructions("Answer in plain text. No LaTeX or markdown math.")
+        .environment(date=date.today().isoformat(), cwd=os.getcwd())
+        .build()
+    )
+    agent = Agent(provider=provider, system_prompt=system_prompt)
     print(f"[{type(provider).__name__} / {provider.model}]")
     answer = agent.run(args.task)
 

@@ -78,3 +78,20 @@ One entry per pattern, written when you apply it. Template:
   a factory. The decorator only automates filling the dict.
 - **Smell it introduced:** a global mutable registry (D17).
 - **Your notes:**
+
+---
+
+## Builder (stage 4)
+
+- **Problem:** system prompts in real harnesses are assembled from parts, and the
+  *order* matters: prompt caching only reuses an unchanged prefix, so volatile facts
+  (date, cwd) must come last.
+- **Shape:** `SystemPromptBuilder` collects sections in any order; `build()` validates
+  (identity required) and renders them in a fixed stable-to-volatile order.
+  `default_prompt()` is the **Director**, a reusable recipe.
+- **When Builder is worth it in Python:** not for "many constructor args" (kwargs and
+  dataclasses already handle that). It's worth it when construction has **rules**:
+  ordering, validation, or several representations of the same parts.
+- **Try it:** add a `.persona()` section, or decide where `.examples()` (few-shot)
+  belongs in the order and why.
+- **Your notes:**

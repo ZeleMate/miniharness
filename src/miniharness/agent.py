@@ -8,25 +8,20 @@ Stage 2 (Strategy): which LLM answers is a `Provider` passed in from outside.
 The agent never knows which one it is talking to.
 """
 
+from miniharness.prompts import default_prompt
 from miniharness.providers import Provider
 from miniharness.tools import TOOLS, run_tool
 from miniharness.types import LLMResponse, Message, ToolCall
-
-DEFAULT_SYSTEM_PROMPT = (
-    "You are a helpful assistant. Use the tools when they help. "
-    "When you have the final answer, reply without calling a tool."
-)
-
 
 class Agent:
     def __init__(
         self,
         provider: Provider,
-        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        system_prompt: str | None = None,
         max_steps: int = 10,
     ):
         self.provider = provider
-        self.system_prompt = system_prompt
+        self.system_prompt = system_prompt if system_prompt is not None else default_prompt().build()
         self.max_steps = max_steps
         self.messages: list[Message] = []
 

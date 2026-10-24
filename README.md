@@ -27,6 +27,7 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 | `src/miniharness/agent.py` | The loop (stage 1: Template Method), with an injected provider |
 | `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory) |
 | `src/miniharness/adapters/` | Our types ↔ OpenAI / Anthropic wire formats (stage 2: Adapter) |
+| `src/miniharness/prompts.py` | `SystemPromptBuilder` + `default_prompt()` director (stage 4: Builder) |
 | `src/miniharness/tools.py` | **Naive** global tool registry |
 | `DECISIONS.md` | Architecture decision log: options, trade-offs, open questions |
 | `PATTERNS.md` | Your learning journal |
@@ -40,7 +41,7 @@ Only add a pattern once you feel the pain it solves.
 | 1 | Core loop with overridable steps | Template Method ✅ (scaffolded) |
 | 2 | OpenRouter / Anthropic / Mock providers | Strategy, Adapter ✅ |
 | 3 | Providers from `"provider:model"` specs | Factory ✅ (Abstract Factory deferred, D14) |
-| 4 | Fluent request construction | Builder |
+| 4 | System prompt from sections (stable → volatile) | Builder ✅ |
 | 5 | Tool calls as objects with undo and replay | Command |
 | 6 | Retry, dev cache, cost tracking, `BudgetGuard` | Decorator |
 | 7 | Model fallbacks; permission → rate limit → guardrail → approval | Chain of Responsibility |

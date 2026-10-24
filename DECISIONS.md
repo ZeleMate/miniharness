@@ -177,3 +177,64 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 - **Wart:** a mock built by the factory has no scripted responses, so
   `hello.py -m mock` fails on the first call. Mocks are meant for tests, which pass
   `responses=` directly.
+
+---
+
+## Stage 4: Builder
+
+### D21. The Builder assembles the system prompt, not the Agent (your call)
+**Status:** accepted
+- **Options:** sectioned system-prompt builder · fluent `Agent.builder()` · skip the stage.
+- **Why:** a Builder earns its place when construction has *rules*. Here the rule is
+  real: stable sections first and volatile ones last, because prompt caching only reuses
+  an unchanged prefix. A fluent Agent builder would duplicate what kwargs already do.
+
+### D22. Mutable builder whose methods return `self` (your call)
+**Status:** accepted
+- **Options:** mutable `return self` · immutable copies (frozen dataclass + `replace`).
+- **Cost:** a partially built builder can't be shared. Branching off it mutates the
+  original, and `test_mutable_builder_is_shared_state` documents this. The director (D26)
+  avoids the trap by returning a fresh builder each time.
+
+### D23. Render order is fixed by the builder, not by the call order
+**Status:** accepted (made during implementation)
+- **Why:** callers can't accidentally put the date above the instructions. This is
+  the Builder's real job: it owns the *assembly rules*, so callers only provide the parts.
+- **Alternative:** render in call order and document "put volatile things last".
+  That's a rule every caller has to remember.
+
+### D24. `tool_rules()` takes guidance text, not the `TOOLS` dict
+**Status:** accepted (made during implementation; differs from the preview)
+- **Why:** providers already send tool schemas through the API's `tools` field.
+  Repeating names and descriptions in the prompt costs tokens on every call and can
+  drift out of sync with the real schemas.
+
+### D25. `build()` returns a plain string
+**Status:** open (made during implementation)
+- **Alternative:** return structured blocks (stable part, volatile part) so the
+  Anthropic adapter can put a `cache_control` breakpoint between them. That's the
+  "same steps, different representations" side of Builder.
+- **Revisit when:** stage 6 adds caching. Today no provider sets cache breakpoints, so
+  the string is enough.
+
+### D26. The Director is a function, `default_prompt()`, that returns a fresh builder
+**Status:** accepted (made during implementation)
+- **Why:** in GoF, a Director class holds a construction recipe. In Python, a function
+  that returns a pre-filled builder is the same idea with less ceremony. Returning
+  the *builder* (not the string) lets callers extend the recipe before `build()`.
+
+### D27. Per-section semantics: identity replaces, rules append, environment merges
+**Status:** accepted (made during implementation)
+- `identity` is required, and `build()` raises without it. An agent with no identity
+  is almost certainly a mistake. Empty sections are omitted entirely.
+- Rendering uses markdown `## Heading` sections. XML tags (`<environment>`) would work
+  equally well with Claude, and the choice lives in one place, so it's cheap to change.
+
+### D28. Environment facts: coarse values and sorted keys
+**Status:** accepted (made during implementation)
+- The example passes the *date*, not a timestamp. That breaks the cached suffix once a
+  day instead of on every request. Keys are sorted, so the same facts always render the
+  same bytes, regardless of keyword order.
+- **Behavior change:** `Agent`'s default prompt now comes from `default_prompt()`, which
+  adds "prefer tools over mental arithmetic". It's a small change to what the model is
+  told.
