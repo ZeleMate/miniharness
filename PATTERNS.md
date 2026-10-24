@@ -338,3 +338,44 @@ One entry per pattern, written when you apply it. Template:
   over a Composite), then rewrite `CostSummary` as a loop over `walk()`. What did you lose compared with
   the Visitor's double dispatch, and what got simpler?
 - **Your notes:**
+
+---
+
+## Facade (stage 16)
+
+- **Problem:** by stage 15, a capable agent meant hand-composing about ten objects in the right order:
+  a provider inside five wrapper layers (in the D46 order), a `Toolbox` with a policy chain and an
+  approver, one event bus passed to *both* the agent and the toolbox (forget one and `ToolCalled`
+  silently disappears, D98), observers, a prompt from the builder, an autosave observer and sub-agents.
+  `examples/hello.py` was 165 lines, mostly wiring, and every new script copied it.
+- **Shape:** `Harness(model, budget=..., workspace=..., approve=...)` builds everything from flat keyword
+  arguments with safe defaults, then offers a narrow API: `run()`, `follow_up()`, `stream()`,
+  `resume()`, `add_helper()`, `rewind()`, `report()`. The provider stack recipe moved to
+  `build_stack()`, a Director function the facade *uses* and other code can use without it.
+- **A facade simplifies; it doesn't lock anything away:** `h.agent`, `h.toolbox`, `h.stack.tracker` and
+  `h.events` are public. The advanced case starts from a working harness instead of a blank file, and
+  `stream.py` still builds an `Agent` by hand. GoF is explicit that clients may bypass the facade.
+- **Facade vs Mediator:** both sit in front of a group of objects. A Mediator (stage 13) sits *between*
+  peers that talk to each other through it. The peers know the mediator, and it carries their
+  conversation. A Facade sits *in front of* a subsystem for an outside client. The subsystem doesn't
+  know the facade exists, and the agent, toolbox and wrappers didn't change at all this stage.
+- **Facade vs Builder/Director:** a Builder (stage 4) assembles *one* complex product under rules and is
+  done. A Facade is still there after construction, as the simple way to *use* many objects. Here they
+  cooperate: the facade calls two Directors (`default_prompt()`, `build_stack()`), and its value is the
+  API afterwards (`report()`, `rewind()`).
+- **Defaults are the facade's real design work:** the parts can do anything, so the facade decides what
+  happens when the caller says nothing. Here, side effects are denied without `approve=` (a library
+  never calls `input()`), every run has a $0.05 budget, and file tools need a workspace.
+- **Live lessons:** the defaults compose in ways the parts didn't. Breaking out of `h.stream()` makes the
+  next call stop on `budget`, because the abandoned call's cost is unknown and the default budget fails
+  closed (D179). Moving the checkpoint code into the facade exposed a bug in the old example: a helper
+  finishing deleted the main run's checkpoint (D182). And `load_dotenv()` searches from the *script's*
+  folder, so the facade leaves `.env` to the application (D181).
+- **Harness connection:** the Claude Agent SDK's `query(prompt, options)` and `ClaudeSDKClient`, the
+  OpenAI Agents SDK's `Runner.run(agent, input)`, and LangChain's `create_agent(...)` are facades over
+  model clients, tool loops, permissions, hooks and sessions. Each one defines a permission mode and a
+  max-turns default, and you drop down to the parts when the defaults stop fitting.
+- **Try it:** write `examples/review.py` in under 20 lines that asks a `Harness` with a read-only helper to
+  review a file in `workspace/`, then prints `h.report()`. Which subsystem did you have to reach *past*
+  the facade for, and should that become a facade argument or stay an escape hatch?
+- **Your notes:**

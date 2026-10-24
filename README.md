@@ -13,7 +13,7 @@ Uses [uv](https://docs.astral.sh/uv/) for Python, dependencies and the venv.
 uv sync                # creates .venv and installs everything from uv.lock
 cp .env.example .env   # add your OPENROUTER_API_KEY (and optionally ANTHROPIC_API_KEY)
 uv run pytest          # uses the mock provider: free and offline
-uv run examples/hello.py
+uv run examples/hello.py                 # flags mapped onto the Harness facade
 uv run examples/hello.py -m anthropic:claude-haiku-5-5
 uv run examples/hello.py --rewind "Write a haiku to haiku.txt"   # asks before writing, undoes after
 uv run examples/hello.py --cache --budget 0.01                  # dev cache + spend limit
@@ -28,17 +28,31 @@ uv run examples/team.py                                           # writer and r
 uv run python -m miniharness.trace run.jsonl --html report.html   # summarize a trace
 ```
 
+From Python, the facade is the short way in:
+
+```python
+from dotenv import load_dotenv
+from miniharness import Harness
+
+load_dotenv(".env")
+h = Harness("openrouter", budget=0.05, workspace="workspace", approve=True)
+print(h.run("Write a haiku about undo to haiku.txt"))
+print(h.report())   # calls, tokens, cost
+h.rewind()          # undo the file changes
+```
+
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
 
 ## Layout
 
 | File | What it is |
 |---|---|
+| `src/miniharness/harness.py` | `Harness`: one object that builds and runs a capable agent, every part still reachable (stage 16: Facade) |
 | `src/miniharness/trace.py` | Trace tree + visitors: `CostSummary`, `HtmlReport` (stage 14: Visitor) |
 | `src/miniharness/types.py` | Provider-neutral `Message`, `ToolCall`, `LLMResponse`; stream chunks `TextDelta`, `Completed` |
 | `src/miniharness/agent.py` | The agent (stage 1: Template Method), with an injected provider; `iter_run()` (stage 15: Iterator) |
 | `src/miniharness/lifecycle.py` | Agent lifecycle states: `start()` / `step()` (stage 9: State); generator `iter_step()` (stage 15) |
-| `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory); usage/budget/retry/cache wrappers (stage 6: Decorator); `FallbackChain` (stage 7); `LazyProvider` (stage 8: Proxy); `CircuitBreaker` (stage 9: State); `stream()` on every provider and wrapper, `streaming.py` helpers (stage 15: Iterator) |
+| `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory); usage/budget/retry/cache wrappers (stage 6: Decorator); `FallbackChain` (stage 7); `LazyProvider` (stage 8: Proxy); `CircuitBreaker` (stage 9: State); `build_stack()` recipe (stage 16); `stream()` on every provider and wrapper, `streaming.py` helpers (stage 15: Iterator) |
 | `src/miniharness/adapters/` | Our types ↔ OpenAI / Anthropic wire formats (stage 2: Adapter) |
 | `src/miniharness/checkpoint.py` | `Checkpoint`: snapshot, save, load (stage 11: Memento); `Agent.fork()` (Prototype) |
 | `src/miniharness/events.py` | Typed events + `EventBus` (stage 10: Observer); `TokenStreamed` (stage 15) |
@@ -70,7 +84,7 @@ Only add a pattern once you feel the pain it solves.
 | 13 | Peer team (writer ↔ reviewer) routed by a `Team` mediator | Mediator ✅ |
 | 14 | Trace tree from events; cost summary and HTML report | Visitor ✅ |
 | 15 | Streaming tokens and events; `for event in agent.iter_run(task)` | Iterator ✅ |
-| 16 | `Agent("task").run()` hides everything | Facade |
+| 16 | `Harness("openrouter").run(task)` hides the wiring; `build_stack()` recipe | Facade ✅ |
 | + | Agent types × providers | Bridge |
 | + | Global registry → dependency injection | Singleton (and why to avoid it) |
 | + | Per-request model choice (cheap vs strong) | Strategy, part 2 |

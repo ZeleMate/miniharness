@@ -12,7 +12,7 @@ from miniharness import Agent
 from miniharness.events import EventBus
 from miniharness.observers import ConsolePrinter
 from miniharness.prompts import SystemPromptBuilder
-from miniharness.providers import BudgetGuard, UsageTracker, create_provider
+from miniharness.providers import build_stack
 from miniharness.team import Team
 from miniharness.tools import Toolbox
 
@@ -25,8 +25,8 @@ def main() -> None:
     parser.add_argument("task", nargs="?", default="Write a haiku about the undo button.")
     args = parser.parse_args()
 
-    tracker = UsageTracker(create_provider(args.model))
-    provider = BudgetGuard(tracker, limit_usd=args.budget)  # one budget for the whole team
+    stack = build_stack(args.model, budget=args.budget)  # one budget for the whole team
+    provider, tracker = stack.provider, stack.tracker
     events = EventBus()
     events.subscribe(ConsolePrinter())
 

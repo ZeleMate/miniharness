@@ -1,4 +1,4 @@
-"""Run the agent against a real model.
+"""Run the agent against a real model, through the Harness facade.
 
     uv run examples/hello.py                                 # OpenRouter, default model
     uv run examples/hello.py -m anthropic
@@ -12,41 +12,19 @@
     uv run examples/hello.py --checkpoint run.json --budget 0.0001      # stops; rerun to resume
     uv run examples/hello.py --delegate "Ask the researcher what notes.txt says"
     uv run examples/hello.py --stream "Explain undo in two sentences"   # tokens as they arrive
+
+Until stage 16 this file wired the provider stack, toolbox, policy, bus,
+prompt, checkpoints and sub-agent by hand. Now it only maps flags to
+`Harness` arguments; the wiring lives in miniharness/harness.py.
 """
 
 import argparse
-import os
-from datetime import date
-from pathlib import Path
 
 from dotenv import load_dotenv
 
-from miniharness import Agent
-from miniharness.checkpoint import Checkpoint
-from miniharness.events import EventBus, RunFinished, StateChanged
-from miniharness.observers import ConsolePrinter, JsonlTracer
-from miniharness.prompts import default_prompt
-from miniharness.providers import (
-    BudgetGuard,
-    CircuitBreaker,
-    DiskCache,
-    FallbackChain,
-    Retry,
-    UsageTracker,
-    available_providers,
-    create_provider,
-    lazy_provider,
-)
-from miniharness.tools import (
-    AgentTool,
-    AllowReadOnly,
-    AskBeforeSideEffects,
-    MaxCalls,
-    PolicyChain,
-    Toolbox,
-    ToolboxView,
-    default_tools,
-)
+from miniharness import Harness
+from miniharness.providers import available_providers
+from miniharness.tools import MaxCalls
 from miniharness.types import ToolCall
 
 
@@ -78,86 +56,38 @@ def main() -> None:
     parser.add_argument("task", nargs="?", default="What is (17 * 23) + 4? Also, what time is it in UTC?")
     args = parser.parse_args()
 
-    base = create_provider(args.model)  # built now: a bad config fails at startup
-    if args.fallback:
-        # Lazy: the backup is only built (and its key only needed) if the main one fails
-        # The breaker stops retrying a failing main provider on every turn
-        base = FallbackChain([CircuitBreaker(base), lazy_provider(args.fallback)])
-    tracker = UsageTracker(base)
-    provider = Retry(BudgetGuard(tracker, limit_usd=args.budget))
-    if args.cache:
-        provider = DiskCache(provider, ".cache/llm")
-    system_prompt = (
-        default_prompt()
-        .instructions("Answer in plain text. No LaTeX or markdown math.")
-        .environment(date=date.today().isoformat(), cwd=os.getcwd())
-        .build()
+    h = Harness(
+        args.model,
+        budget=args.budget,
+        cache=args.cache,
+        fallback=args.fallback,
+        workspace="workspace",
+        approve=True if args.yes else terminal_approver,
+        policies=[MaxCalls("write_file", 5)],
+        read_only=args.read_only,
+        instructions=["Answer in plain text. No LaTeX or markdown math."],
+        trace=args.trace,
+        checkpoint=args.checkpoint,
+        stream=args.stream,
     )
-    workspace = Path("workspace")
-    workspace.mkdir(exist_ok=True)
-    policy = PolicyChain(
-        [MaxCalls("write_file", 5), AllowReadOnly(), AskBeforeSideEffects()],
-        approver=(lambda call: True) if args.yes else terminal_approver,
-    )
-    events = EventBus()
-    events.subscribe(ConsolePrinter())
-    if args.trace:
-        events.subscribe(JsonlTracer(args.trace))
-    toolbox = Toolbox(default_tools(workspace), policy=policy, events=events)
     if args.delegate:
-        # Same provider (and budget); can only read; reports on the same event bus
-        researcher = Agent(
-            provider=provider,
-            system_prompt=default_prompt().instructions("Read files to answer. Reply with a short summary.").build(),
-            tools=ToolboxView.read_only(toolbox),
-            events=events,
-            stream=args.stream,
-        )
-        toolbox.add(AgentTool("researcher", "Reads files in the workspace and summarizes them.", researcher))
-    tools = ToolboxView.read_only(toolbox) if args.read_only else toolbox
-    agent = Agent(provider=provider, system_prompt=system_prompt, tools=tools, events=events, stream=args.stream)
-    print(f"[{type(base).__name__} / {provider.model}]")
-    if args.checkpoint:
-        saved = Path(args.checkpoint)
+        h.add_helper("researcher", "Reads files in the workspace and summarizes them.",
+                     ["Read files to answer. Reply with a short summary."])
+    print(f"[{type(h.stack.base).__name__} / {h.provider.model}]")
 
-        def autosave(event):
-            if isinstance(event, StateChanged) and not agent.done:
-                agent.checkpoint().save(saved)
-            elif isinstance(event, RunFinished) and event.state == "done":
-                saved.unlink(missing_ok=True)  # finished: next run starts fresh
-
-        resume = Checkpoint.load(saved) if saved.exists() else None
-        events.subscribe(autosave)
+    if (saved := h.saved_run) is not None:
+        print(f"  resuming from {args.checkpoint} ({saved.model_calls} model call(s) already made)")
+        answer = h.resume()
     else:
-        resume = None
-
-    if resume is not None:
-        print(f"  resuming from {args.checkpoint} ({resume.model_calls} model call(s) already made)")
-        agent.restore(resume, files=False)  # a new process: its Toolbox history is gone
-        while not agent.done:
-            agent.step()
-        answer = agent.state.answer
-    else:
-        answer = agent.run(args.task)  # the ConsolePrinter shows progress live
-    if not (args.stream and agent.state.name == "done"):  # a streamed answer was already shown
+        answer = h.run(args.task)  # the console printer shows progress live
+    if not (args.stream and h.agent.state.name == "done"):  # a streamed answer was already shown
         print(f"\n{answer}")
+    print(f"\n{h.report()}")
 
-    if isinstance(base, FallbackChain) and base.failures:
-        for link, why in base.failures:
-            print(f"  fell back from {link.model}: {why}")
-
-    total = tracker.total
-    cost = "unknown" if total.cost_usd is None else f"${total.cost_usd:.6f}"
-    line = f"\n{len(tracker.calls)} model call(s), {total.input_tokens} in / {total.output_tokens} out tokens, {cost}"
-    if args.cache:
-        line += f", cache {provider.hits} hit(s) / {provider.misses} miss(es)"
-    print(line)
-
-    changes = [c for c in toolbox.history if c.tool.side_effects]
-    if changes:
-        print(f"\n{len(changes)} change(s) in ./{workspace}/")
+    if h.changes:
+        print(f"\n{len(h.changes)} change(s) in ./{h.workspace}/")
         if args.rewind:
-            for command in toolbox.undo_all():
+            for command in h.rewind():
                 print(f"  undid {command.tool.name}({command.call.arguments.get('path')})")
 
 

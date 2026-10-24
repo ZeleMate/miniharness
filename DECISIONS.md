@@ -418,7 +418,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   when a budget is involved.
 
 ### D54. The example composes the stack by hand instead of using a helper
-**Status:** accepted (made during implementation)
+**Status:** superseded by D175 (stage 16)
 - **Why:** the order matters (D46) and should be visible where it's built.
 - **Revisit when:** the same stack is built in more than one place. A helper
   would then be a small Director, like `default_prompt()` in stage 4.
@@ -711,7 +711,7 @@ from `agent.messages` afterwards.
   If the emit lived inside the hook, every override would have to remember `super()`.
 
 ### D98. The Agent always has a bus; it doesn't share it with the Toolbox automatically
-**Status:** open (made during implementation)
+**Status:** open for `Agent`; settled for the `Harness` path by D177 (stage 16)
 - `Agent(..., events=None)` creates an empty bus, so `agent.events.subscribe(...)` always
   works. The Toolbox's bus is optional, and the caller must pass the same one to both.
 - **Risk:** forget to pass it to the Toolbox, and `ToolCalled` events silently never arrive.
@@ -1243,3 +1243,155 @@ from `agent.messages` afterwards.
 - **Lesson:** with push, the producer decides when it's finished. With pull, the *consumer* does, and it can
   stop at any `yield`. A producer's cleanup belongs in `finally`, and its bookkeeping before the last
   `yield`.
+
+---
+
+## Stage 16: Facade
+
+### D173. The facade is a `Harness` class that owns its subsystems and exposes them (your call)
+**Status:** accepted
+- **Options:** a `Harness` class · a factory function that returns a ready `Agent` · a one-shot
+  `miniharness.run("task")` function.
+- **Why:** the common case becomes `Harness("openrouter", workspace="ws").run(task)`, and everything
+  the facade built stays a public attribute (`agent`, `toolbox`, `stack`, `tracker`, `events`). A
+  factory returning only the `Agent` would bury the tracker, the cache and the fallback chain inside
+  the wrapper stack (`agent.provider.inner.inner...`). A one-shot function has nothing to follow up
+  on, stream from or rewind.
+- **API:** `run()`, `follow_up()`, `stream()`, `resume()`, `add_helper()`, `rewind()`, `changes`,
+  `cost`, `report()`.
+- **Cost:** a second way to build an agent. Bugs can now live in the wiring as well as in the parts.
+
+### D174. Flat keyword arguments with safe defaults; `model` takes a spec or a ready Provider (your call)
+**Status:** accepted
+- **Options:** flat kwargs · a `HarnessConfig` dataclass · a fluent `Harness.builder()`.
+- **Why:** the signature documents itself, and the IDE completes it. A fluent builder would repeat
+  what kwargs already do, which D21 rejected for `Agent` too. A config dataclass pays off once
+  configuration comes from files. Here it only comes from code and CLI flags.
+- **Differs from the preview:** there's no separate `provider=` argument. `model` accepts either a
+  `"provider:model"` string or a `Provider` instance, the same as `build_stack()`. One parameter
+  can't be set twice in conflicting ways, and tests pass a `MockProvider` straight in.
+- **Cost:** 17 parameters, and the list grows with every feature. **Revisit when** configuration
+  needs to be saved, diffed or loaded from TOML. That's when to add the dataclass.
+
+### D175. The provider stack recipe is a public `build_stack()` in `providers/stack.py` (your call)
+**Status:** accepted; supersedes D54
+- **Why now:** D54 said "add a helper once the stack is built in more than one place". The facade
+  and `examples/team.py` are those places. Like `default_prompt()` (D26), it's a Director written as a
+  function. It knows the D46 order and leaves out the layers that weren't asked for.
+- **Returns a `Stack`**, not just the provider. It holds handles to the layers callers read
+  afterwards: `tracker` (cost), `cache` (hits/misses), `chain` (fallback failures) and `base`. Without
+  them, every caller would walk `.inner` to find the tracker.
+- `retries=3` is always applied. `Retry` is the D50 semantic retry, which is cheap and invisible
+  when nothing fails.
+- **Tested:** the full layer order, the minimal stack, a lazy fallback that's never built, and cache
+  hits that don't count against the budget.
+
+### D176. Side effects are denied unless `approve=` is given; the budget and the workspace are opt-out / opt-in (your call)
+**Status:** accepted
+- **Options:** deny by default · ask on the terminal · allow everything.
+- **Why:** a library should never call `input()` on its own, because that hangs headless runs (CI, a
+  server, a subprocess). `approve=None` (or `False`) means there's no approver, so the policy chain
+  (stage 7) denies. `approve=True` allows everything, and a callable decides per call. `hello.py`
+  passes its terminal prompt.
+- **The other defaults point the same way:** `budget=0.05` (pass `None` to disable), and file tools
+  only exist when a `workspace` is given.
+- **Live:** with all defaults, the model tried `write_file`, got "needs approval and no approver is
+  available", and told the user it lacked permission. No file was written.
+
+### D177. The facade shares one bus between the agent, the toolbox and every helper
+**Status:** accepted (made during implementation); settles D98 for the facade path
+- D98 left the wiring to the caller, and forgetting it silently loses `ToolCalled`. The facade is
+  exactly the place that knows all the parts, so it passes one bus to each. `Agent` itself still
+  doesn't reach into its tools (D76 stays intact), so D98 stays open for hand-built agents.
+- `events=` lets a caller share a bus between several harnesses (or with a `Team`).
+
+### D178. `stream()` turns streaming on for one run and mutes the facade's own console printer
+**Status:** accepted (made during implementation)
+- Whoever iterates `h.stream(task)` is the one displaying the run. If the `ConsolePrinter` kept
+  printing, every token would be shown twice. The printer is subscribed through a closure that checks
+  a mute flag, so it keeps its place in the subscriber order.
+- Both changes are undone in a `finally`, so they're restored after a `break` too (tested). Observers
+  subscribed by the caller, such as `trace=` or their own, keep receiving everything.
+- **Cost:** it's a little magic. An explicit `console=False` would be more honest, but that would
+  make the simplest streaming loop print everything twice.
+
+### D179. With a default budget, breaking out of `stream()` blocks the next model call
+**Status:** open (found while testing the facade); raises the priority of D160
+- An abandoned stream records unknown cost (D160), and the budget fails closed on unknown cost (D48).
+  Stage 15 only hit this with an explicit `--budget`. Now that every `Harness` has a budget by
+  default, any `break` followed by `step()` or `follow_up()` stops with `[stopped: budget]` (tested;
+  confirmed live: `cost: None` after breaking at "10").
+- **Options:** (a) leave it, since it fails safe, and document it; (b) estimate the cost from the
+  streamed text; (c) look up the real cost afterwards (OpenRouter's generation endpoint, D160).
+- **Revisit when** the Bridge stage touches providers, or as soon as someone breaks out of a stream
+  for real.
+
+### D180. The console printer is on by default
+**Status:** accepted (made during implementation; your preview had `console=True`)
+- `Harness().run(task)` shows progress immediately. That's what a learning harness and its examples
+  want. **Cost:** a library that prints to stdout by default is unusual, so embedding code passes
+  `console=False` (the tests do).
+
+### D181. The facade doesn't load `.env`
+**Status:** accepted (made during implementation; found live)
+- Loading environment files is the application's job. A library that reads `.env` on import or
+  construction surprises whoever deploys it. Examples call `load_dotenv()`.
+- **Live gotcha:** `load_dotenv()` with no arguments searches from the calling *script's* directory,
+  not the current directory. A script outside the repo found no key (`KeyError: 'OPENROUTER_API_KEY'`).
+  `load_dotenv(".env")` fixed it.
+
+### D182. Checkpoints: autosave only on the main agent's events; `run()` never resumes silently
+**Status:** accepted (bug fixed while moving the code; made during implementation)
+- **Bug in the old `hello.py`:** the autosave observer reacted to *every* agent's events. With
+  `--delegate --checkpoint`, a helper finishing (`RunFinished(state="done")` at depth 1) deleted the
+  main run's checkpoint mid-run, and every helper step re-saved the main agent mid-tool-call. The
+  facade's observer ignores events with `depth > 0`.
+- `run(task)` always starts fresh. `resume()` finishes the saved run explicitly, and `saved_run`
+  shows whether there is one. `hello.py` decides between them (and says so on screen). Silently
+  ignoring the `task` argument in favor of a stale file would have been a surprising facade.
+- **Live:** `--checkpoint run.json --budget 0.0001` stopped after one call and kept the file. The rerun
+  resumed, finished, and deleted it.
+
+### D183. `policies=` are added before the defaults; `tools=` replaces the default tool set
+**Status:** accepted (made during implementation)
+- The facade's chain is `default_policy(approver)`, and extra policies go in front of it, so
+  `MaxCalls("write_file", 5)` (kept in `hello.py`) is checked before `AllowReadOnly`.
+- `tools=[...]` replaces `default_tools(workspace)` but still goes into the facade's `Toolbox`, so
+  the policy, the history (undo) and the bus still apply. To use a completely custom `ToolSet`, build
+  the `Agent` by hand. The facade doesn't hide that path.
+
+### D184. `add_helper()` only makes read-only sub-agents
+**Status:** open (made during implementation)
+- It wraps the stage 12 recipe: an `AgentTool` around an `Agent` that shares the provider (and so
+  the budget), the bus and the streaming setting, and sees `ToolboxView.read_only(toolbox)`. In a
+  read-only harness the main agent's view is rebuilt, because a view fixes its allow-list when it's
+  made (tested).
+- **Why read-only only:** a writing helper raises questions the facade shouldn't answer silently,
+  such as whose approval applies and whose undo history it uses. **Revisit when** a writing helper is
+  actually needed.
+
+### D185. The facade is not a Builder, and it reuses the Director
+**Status:** notes (made during implementation)
+- **Builder** (stage 4) constructs *one complex object* step by step under assembly rules. **Facade**
+  gives a *simple interface to a subsystem of many objects* and keeps using them after construction:
+  `run()`, `report()`, `rewind()`. `Harness.__init__` does a builder-like job, but its value is the
+  narrow API afterwards.
+- It calls both Directors: `default_prompt()` (with `instructions=` appended and `date`/`cwd`/
+  `workspace` as environment facts) and `build_stack()`. `system_prompt=` replaces the prompt
+  entirely.
+
+### D186. `examples/hello.py` maps flags to `Harness`; `team.py` uses `build_stack`; `stream.py` stays hand-wired
+**Status:** accepted (made during implementation)
+- `hello.py` shrank from 165 to 95 lines, and almost all of what's left is argparse. Behavior changes:
+  the prompt also states the workspace, and fallback failures are now part of `report()`.
+- `team.py` now gets `Retry` too, because the recipe always includes it.
+- `stream.py` still wires an `Agent` by hand on purpose. It shows the bare Iterator pattern with no
+  facade in between, and someone has to keep showing the parts.
+
+### D187. How stage 16 touches the remaining open decisions
+**Status:** notes
+- **D166 (`think()` bypassed when streaming):** still open. The facade doesn't subclass `Agent`, so it
+  never felt the risk. That leaves it to the Bridge stage (agent types × providers).
+- **D17 (global provider registry):** untouched. `build_stack()` calls the global `create_provider`.
+  That's the bonus Singleton → dependency-injection stage.
+- **D160:** more visible now, see D179.
