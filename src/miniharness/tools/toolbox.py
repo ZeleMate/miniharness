@@ -1,5 +1,7 @@
 """Invoker: runs tool calls as commands and keeps their history."""
 
+import uuid
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Mapping, Protocol
 
@@ -18,6 +20,14 @@ class ToolSet(Protocol):
     def execute(self, call: ToolCall) -> str: ...
 
 
+@dataclass(frozen=True)
+class ToolMark:
+    """A position in one specific Toolbox's history."""
+
+    toolbox_id: str
+    position: int
+
+
 class Toolbox:
     def __init__(self, tools: list[Tool], policy: PolicyChain | None = None, events: EventBus | None = None):
         self._tools: dict[str, Tool] = {}
@@ -30,6 +40,7 @@ class Toolbox:
         self.history: list[ToolCommand] = []
         self.denied: list[tuple[ToolCall, Decision]] = []
         self.events = events
+        self.id = uuid.uuid4().hex  # lets a mark recognize the toolbox it came from
 
     @property
     def tools(self) -> Mapping[str, Tool]:
@@ -80,6 +91,26 @@ class Toolbox:
             command.undo()
             return command
         return None
+
+    def mark(self) -> ToolMark:
+        return ToolMark(self.id, len(self.history))
+
+    def rewind_to(self, mark: ToolMark) -> list[ToolCommand]:
+        """Undo every change made after `mark`, newest first.
+
+        Checks the whole range before touching anything: if an irreversible
+        change is in the way, nothing is undone.
+        """
+        if mark.toolbox_id != self.id:
+            raise ValueError("This mark belongs to a different Toolbox")
+        pending = [c for c in reversed(self.history[mark.position :]) if c.needs_undo]
+        blocking = [c for c in pending if not c.tool.reversible]
+        if blocking:
+            c = blocking[0]
+            raise IrreversibleError(f"Cannot rewind past {c.tool.name}({c.call.arguments})")
+        for command in pending:
+            command.undo()
+        return pending
 
     def undo_all(self) -> list[ToolCommand]:
         """Rewind every reversible change, newest first."""

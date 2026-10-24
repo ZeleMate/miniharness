@@ -220,3 +220,24 @@ One entry per pattern, written when you apply it. Template:
 - **Try it:** write a `Stats` observer that counts tool calls per tool and prints a summary
   on `RunFinished`. Did you need to touch the Agent?
 - **Your notes:**
+
+---
+
+## Memento + Prototype (stage 11)
+
+- **Problem:** no way to go back (rewind a conversation and its file changes), to survive a stop
+  (resume after a budget stop or a crash), or to try alternatives from the same point (fork).
+- **Memento:** `agent.checkpoint()` returns a `Checkpoint` (a deep-copied snapshot of messages,
+  lifecycle state, model-call count and a `ToolMark`). `agent.restore(cp)` puts it all back,
+  undoing later file changes through stage 5's command history. `save()`/`load()` persist it.
+- **Prototype:** `agent.fork(cp, provider=...)` copies the agent, keeping its class and settings,
+  and continues independently.
+- **Roles:** *Originator* = Agent (creates and restores). *Memento* = Checkpoint. *Caretaker* =
+  whoever holds it (the autosave observer, a test, you).
+- **Patterns compose:** rewind = Memento (conversation) + Command (file undo). Autosave = Observer
+  driving Memento. Resume relies on State (each state snapshots itself).
+- **Harness connection:** Claude Code's rewind restores the conversation *and* the code together.
+  That's D105 plus file rewind.
+- **Try it:** take a checkpoint, fork it onto two different models, run both, and compare
+  their answers and costs.
+- **Your notes:**

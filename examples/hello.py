@@ -9,6 +9,7 @@
     uv run examples/hello.py -m anthropic:claude-haiku-5-5 --fallback openrouter
     uv run examples/hello.py --read-only "Write a haiku to haiku.txt"  # model can't see write_file
     uv run examples/hello.py --trace run.jsonl                          # also write a JSONL trace
+    uv run examples/hello.py --checkpoint run.json --budget 0.0001      # stops; rerun to resume
 """
 
 import argparse
@@ -19,7 +20,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from miniharness import Agent
-from miniharness.events import EventBus
+from miniharness.checkpoint import Checkpoint
+from miniharness.events import EventBus, RunFinished, StateChanged
 from miniharness.observers import ConsolePrinter, JsonlTracer
 from miniharness.prompts import default_prompt
 from miniharness.providers import (
@@ -64,6 +66,7 @@ def main() -> None:
     parser.add_argument("--cache", action="store_true", help="replay identical requests from .cache/llm")
     parser.add_argument("--fallback", help="provider[:model] to use if the main one fails or refuses")
     parser.add_argument("--trace", help="append every event to this JSONL file")
+    parser.add_argument("--checkpoint", help="autosave here; if it exists, resume the unfinished run")
     parser.add_argument("--read-only", action="store_true", help="hide tools that change anything")
     parser.add_argument("--yes", action="store_true", help="approve every tool call that asks")
     parser.add_argument("--rewind", action="store_true", help="undo all file changes after the run")
@@ -99,7 +102,28 @@ def main() -> None:
     tools = ToolboxView.read_only(toolbox) if args.read_only else toolbox
     agent = Agent(provider=provider, system_prompt=system_prompt, tools=tools, events=events)
     print(f"[{type(base).__name__} / {provider.model}]")
-    answer = agent.run(args.task)  # the ConsolePrinter shows progress live
+    if args.checkpoint:
+        saved = Path(args.checkpoint)
+
+        def autosave(event):
+            if isinstance(event, StateChanged) and not agent.done:
+                agent.checkpoint().save(saved)
+            elif isinstance(event, RunFinished) and event.state == "done":
+                saved.unlink(missing_ok=True)  # finished: next run starts fresh
+
+        resume = Checkpoint.load(saved) if saved.exists() else None
+        events.subscribe(autosave)
+    else:
+        resume = None
+
+    if resume is not None:
+        print(f"  resuming from {args.checkpoint} ({resume.model_calls} model call(s) already made)")
+        agent.restore(resume, files=False)  # a new process: its Toolbox history is gone
+        while not agent.done:
+            agent.step()
+        answer = agent.state.answer
+    else:
+        answer = agent.run(args.task)  # the ConsolePrinter shows progress live
     print(f"\n{answer}")
 
     if isinstance(base, FallbackChain) and base.failures:

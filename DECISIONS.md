@@ -71,7 +71,7 @@ codebase decided and why*.
   provider, which knows its API.
 
 ### D8. Keep `Message.raw` for Anthropic's replayed content
-**Status:** open (made during implementation)
+**Status:** open; serialization settled by D106 (stage 11), the leak itself remains
 - **Problem:** Claude's thinking blocks must be sent back unchanged, but the
   neutral `Message` type can't represent them.
 - **Options:** (a) an opaque `raw` field (current); (b) `extras: dict[str, Any]`
@@ -666,7 +666,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   identical, and all 106 earlier tests passed unchanged.
 
 ### D91. No `AwaitingHuman` state: approval stays synchronous inside the Toolbox
-**Status:** open (made during implementation)
+**Status:** open, now unblocked: stage 11 can persist a paused run (D118)
 - The approver blocks inside `Toolbox.execute()`. A real `AwaitingHuman` state would mean
   *pausing* the run, returning control, and resuming when someone answers, possibly hours
   later or in another process.
@@ -754,3 +754,100 @@ from `agent.messages` afterwards.
 - `UsageTracker` could almost be an observer of `ModelCalled`. But `BudgetGuard` must stop a
   call *before* it happens, and an observer only hears about events after the fact. This is
   why the budget is a proxy (D72), not an observer. Observer is for *reacting*, not *controlling*.
+
+---
+
+## Stage 11: Memento + Prototype
+
+### D105. Checkpoints support conversation rewind, file rewind, save/resume and fork (your call)
+**Status:** accepted
+- Observed live: a run stopped by a tiny budget was resumed from its autosaved checkpoint
+  in a new process. It continued with the next tool call and didn't repeat the first model call.
+
+### D106. Checkpoints are JSON; `raw` is stored via `model_dump()` (your call)
+**Status:** accepted; **live replay against Anthropic not yet verified**
+- Anthropic's SDK blocks are dumped with `model_dump(mode="json", exclude_none=True)`, and the
+  adapter replays the loaded dicts unchanged (tested offline with real `TextBlock` and
+  `ToolUseBlock` objects).
+- `exclude_none` avoids sending `null` for optional fields the API may not expect.
+- **Unverified:** the Anthropic key was invalid during this stage, so a resumed Claude run
+  (with thinking blocks) hasn't been sent back to the real API yet. Verify once the key works.
+
+### D107. A fork copies the conversation and shares everything else unless overridden (your call)
+**Status:** accepted
+- It warns when the fork shares the original's Toolbox (same workspace, same undo history).
+
+### D108. The memento is a transparent frozen dataclass, not an opaque object
+**Status:** accepted (made during implementation)
+- GoF's Memento is *opaque*: only the originator can read it. Here, serialization needs
+  the fields, and Python can't enforce privacy anyway. The intent survives as a convention:
+  only `Agent` builds and restores checkpoints, and everyone else just holds them.
+
+### D109. Deep copies on capture *and* on restore
+**Status:** accepted (made during implementation)
+- Capture copies, so later changes to the agent don't alter the checkpoint. Restore copies,
+  so changes after restoring don't alter it either, and the same checkpoint can be restored
+  many times (both tested). The cost is two copies of the conversation per round trip.
+
+### D110. Lifecycle states serialize themselves
+**Status:** accepted (made during implementation)
+- Each state's `snapshot()` returns only its own data (`ActingOnTools` → its pending calls,
+  `Done` → the answer). `from_snapshot()` rebuilds it, so a run can resume with tool calls
+  still pending. `from_snapshot` is a small `if` chain; a registry like stage 3's would be the
+  next step if states multiply.
+
+### D111. A `ToolMark` names its Toolbox; a foreign mark restores the conversation only
+**Status:** accepted (made during implementation)
+- Each Toolbox has a random `id`. A checkpoint from another Toolbox (a fork, or a file
+  loaded in a new process) can't safely rewind files: its history positions refer to commands
+  this Toolbox never ran. `restore()` warns and restores just the conversation.
+- **Consequence:** resuming from disk should pass `files=False`, which the example does.
+  Persisting the command history (D40) would be needed to rewind files across processes.
+
+### D112. File rewind checks for irreversible actions before undoing anything
+**Status:** accepted, with a known gap (made during implementation)
+- `Toolbox.rewind_to()` scans the range first, and `Agent.restore()` rewinds files *before*
+  touching the conversation. An irreversible action leaves everything exactly as it was (tested).
+- **Gap:** an individual undo can still fail halfway, for example when a file changed since it
+  was written (D35). Then earlier undos have already happened. True all-or-nothing would need
+  a transaction or a redo log.
+
+### D113. Rewound commands stay in the history, marked undone
+**Status:** accepted (made during implementation)
+- The history is an audit log: "written, then rewound" is more truthful than silently deleting
+  the record. Later marks still work because positions only grow.
+
+### D114. Atomic saves and a format version
+**Status:** accepted (made during implementation)
+- `save()` writes to a temporary file and renames it, so a crash mid-write never leaves half a
+  checkpoint. A `version` field lets future formats be detected instead of misread.
+
+### D115. `fork()` uses `copy.copy(self)`, so a fork of a subclass is that subclass
+**Status:** accepted (made during implementation)
+- This is Prototype's real advantage over calling a constructor: the copy keeps the original's
+  concrete class and configuration without the caller knowing either (tested with `Shouty`).
+- Overrides are limited to known attributes, so `fork(model=...)` raises instead of silently
+  adding an attribute nobody reads.
+- **Shared by default:** the provider, and with it any `UsageTracker` or `CircuitBreaker`
+  inside. A fork's spend counts against the same budget, which is usually what you want.
+- A fork never rewinds the original's files (`restore(files=False)`).
+
+### D116. Autosave is an observer in the example, not an Agent feature
+**Status:** accepted (made during implementation)
+- It subscribes to `StateChanged` and saves after every non-final transition, and it deletes the
+  file when the run finishes. The Agent didn't change, which shows patterns composing (Observer
+  driving Memento).
+- A resumed run emits no `RunStarted`, because it didn't start.
+
+### D117. Checkpoints are taken between steps; resuming re-runs pending tool calls
+**Status:** open (made during implementation)
+- A checkpoint in `ActingOnTools` holds calls that haven't run yet. If a process crashes *while*
+  tools are running (after a write, before the next save), resuming runs that write again.
+  That's *at-least-once* execution. Exactly-once would need per-call records written before
+  and after each tool runs.
+
+### D118. Persisted checkpoints make asynchronous approval possible
+**Status:** open (enabler for D91)
+- A run could stop in `ActingOnTools` when approval is needed, save, exit, and resume after a
+  human approves, even in another process. The missing piece is an `AwaitingApproval` state
+  and an approver that says "later" instead of yes or no.

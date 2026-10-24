@@ -15,10 +15,18 @@ advances one transition; `run()` is `start()` plus stepping until done.
 
 Stage 10 (Observer): every transition goes through `start()`/`step()`, so
 that's where RunStarted, StateChanged and RunFinished are emitted.
+
+Stage 11 (Memento + Prototype): `checkpoint()` / `restore()` snapshot and
+rewind the agent (and its file changes); `fork()` copies it to try a variant.
 """
 
+import copy
+import warnings
+from typing import Any
+
+from miniharness.checkpoint import Checkpoint
 from miniharness.events import EventBus, RunFinished, RunStarted, StateChanged
-from miniharness.lifecycle import AgentState, Idle, Thinking
+from miniharness.lifecycle import AgentState, Idle, Thinking, from_snapshot
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider
 from miniharness.tools import Toolbox, ToolSet, default_tools
@@ -59,6 +67,57 @@ class Agent:
         if self.state.terminal:
             self.events.emit(RunFinished(self.state.name, self.state.answer))
         return self.state
+
+    # --- memento -------------------------------------------------------------
+
+    def checkpoint(self) -> Checkpoint:
+        mark = self.tools.mark() if hasattr(self.tools, "mark") else None
+        return Checkpoint.capture(self.messages, self.state.snapshot(), self.model_calls, mark)
+
+    def restore(self, checkpoint: Checkpoint, files: bool = True) -> None:
+        """Put the agent back where the checkpoint was taken.
+
+        With `files=True`, file changes made since then are undone first. If
+        they can't be (an irreversible action), nothing is restored at all.
+        """
+        if files:
+            self._rewind_files(checkpoint)
+        self.messages = list(copy.deepcopy(checkpoint.messages))
+        self.model_calls = checkpoint.model_calls
+        self._transition(from_snapshot(checkpoint.state))
+
+    def _rewind_files(self, checkpoint: Checkpoint) -> None:
+        mark = checkpoint.tool_mark
+        if mark is None:
+            return
+        if not hasattr(self.tools, "rewind_to") or getattr(self.tools, "id", None) != mark.toolbox_id:
+            warnings.warn(
+                "Checkpoint comes from another Toolbox (e.g. loaded from disk); file changes were not rewound",
+                stacklevel=3,
+            )
+            return
+        self.tools.rewind_to(mark)
+
+    # --- prototype ------------------------------------------------------------
+
+    def fork(self, checkpoint: Checkpoint | None = None, **overrides: Any) -> "Agent":
+        """A copy of this agent that continues independently from `checkpoint`.
+
+        The conversation is copied. Anything not overridden (provider, tools,
+        events, ...) is shared with the original, so pass `tools=` to give the
+        fork its own workspace and undo history.
+        """
+        checkpoint = checkpoint if checkpoint is not None else self.checkpoint()
+        unknown = set(overrides) - {"provider", "tools", "system_prompt", "max_steps", "events"}
+        if unknown:
+            raise TypeError(f"Can't override {sorted(unknown)}")
+        clone = copy.copy(self)  # same class: a fork of a subclass is that subclass
+        for name, value in overrides.items():
+            setattr(clone, name, value)
+        if clone.tools is self.tools and hasattr(self.tools, "history"):
+            warnings.warn("Fork shares the original's Toolbox: same workspace and undo history", stacklevel=2)
+        clone.restore(checkpoint, files=False)  # never rewind the original's files
+        return clone
 
     def _transition(self, new: AgentState) -> None:
         old, self.state = self.state, new

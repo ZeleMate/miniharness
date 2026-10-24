@@ -20,6 +20,7 @@ uv run examples/hello.py --cache --budget 0.01                  # dev cache + sp
 uv run examples/hello.py -m anthropic --fallback openrouter      # fall back on outages
 uv run examples/hello.py --read-only "Write a haiku to haiku.txt"  # model can't see write tools
 uv run examples/hello.py --trace run.jsonl                        # also write a JSONL event trace
+uv run examples/hello.py --checkpoint run.json --budget 0.0001    # stops early; rerun to resume
 ```
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
@@ -33,6 +34,7 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 | `src/miniharness/lifecycle.py` | Agent lifecycle states: `start()` / `step()` (stage 9: State) |
 | `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory); usage/budget/retry/cache wrappers (stage 6: Decorator); `FallbackChain` (stage 7); `LazyProvider` (stage 8: Proxy); `CircuitBreaker` (stage 9: State) |
 | `src/miniharness/adapters/` | Our types ↔ OpenAI / Anthropic wire formats (stage 2: Adapter) |
+| `src/miniharness/checkpoint.py` | `Checkpoint`: snapshot, save, load (stage 11: Memento); `Agent.fork()` (Prototype) |
 | `src/miniharness/events.py` | Typed events + `EventBus` (stage 10: Observer) |
 | `src/miniharness/observers.py` | `ConsolePrinter`, `JsonlTracer` |
 | `src/miniharness/prompts.py` | `SystemPromptBuilder` + `default_prompt()` director (stage 4: Builder) |
@@ -56,7 +58,7 @@ Only add a pattern once you feel the pain it solves.
 | 8 | Lazy providers; read-only toolbox views | Proxy ✅ |
 | 9 | Circuit breaker; agent lifecycle with `step()` | State ✅ |
 | 10 | Typed events on a shared bus; live console + JSONL trace | Observer ✅ |
-| 11 | Checkpoint, rewind, fork; clone agent configs | Memento, Prototype |
+| 11 | Checkpoint, rewind (with files), save/resume, fork | Memento, Prototype ✅ |
 | 12 | Agents as tools; sub-agent trees | Composite |
 | 13 | Coordinator routing between agents | Mediator |
 | 14 | Cost/HTML/JSON over the trace tree | Visitor |

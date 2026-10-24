@@ -11,7 +11,7 @@ subclasses that override a hook keep working.
 """
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from miniharness.errors import StopRun
 from miniharness.events import ModelCalled
@@ -27,6 +27,10 @@ class AgentState:
 
     def step(self, agent: "Agent") -> "AgentState":
         raise RuntimeError(f"Cannot step an agent that is {self.name}")
+
+    def snapshot(self) -> dict[str, Any]:
+        """JSON-safe data needed to rebuild this state (see from_snapshot)."""
+        return {"name": self.name}
 
     def __repr__(self) -> str:
         return f"<{self.name}>"
@@ -69,6 +73,9 @@ class ActingOnTools(AgentState):
     def __init__(self, calls: list[ToolCall]):
         self.calls = calls
 
+    def snapshot(self):
+        return {"name": self.name, "calls": [{"id": c.id, "name": c.name, "arguments": c.arguments} for c in self.calls]}
+
     def step(self, agent):
         agent.messages.extend(agent.act(self.calls))
         return Thinking()
@@ -81,6 +88,9 @@ class Done(AgentState):
     def __init__(self, answer: str):
         self.answer = answer
 
+    def snapshot(self):
+        return {"name": self.name, "answer": self.answer}
+
 
 class Stopped(AgentState):
     name = "stopped"
@@ -90,6 +100,24 @@ class Stopped(AgentState):
         self.reason = reason
         self.detail = detail
 
+    def snapshot(self):
+        return {"name": self.name, "reason": self.reason, "detail": self.detail}
+
     @property
     def answer(self) -> str:
         return f"[stopped: {self.reason}] {self.detail}"
+
+
+def from_snapshot(data: dict[str, Any]) -> AgentState:
+    name = data["name"]
+    if name == "idle":
+        return Idle()
+    if name == "thinking":
+        return Thinking()
+    if name == "acting_on_tools":
+        return ActingOnTools([ToolCall(**c) for c in data["calls"]])
+    if name == "done":
+        return Done(data["answer"])
+    if name == "stopped":
+        return Stopped(data["reason"], data["detail"])
+    raise ValueError(f"Unknown agent state {name!r}")
