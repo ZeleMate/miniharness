@@ -22,6 +22,7 @@ uv run examples/hello.py --read-only "Write a haiku to haiku.txt"  # model can't
 uv run examples/hello.py --trace run.jsonl                        # also write a JSONL event trace
 uv run examples/hello.py --checkpoint run.json --budget 0.0001    # stops early; rerun to resume
 uv run examples/hello.py --delegate "Ask the researcher what notes.txt says"  # read-only sub-agent
+uv run examples/team.py                                           # writer and reviewer via a mediator
 ```
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
@@ -39,6 +40,7 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 | `src/miniharness/events.py` | Typed events + `EventBus` (stage 10: Observer) |
 | `src/miniharness/observers.py` | `ConsolePrinter`, `JsonlTracer` |
 | `src/miniharness/prompts.py` | `SystemPromptBuilder` + `default_prompt()` director (stage 4: Builder) |
+| `src/miniharness/team.py` | `Team` mediator: peers talk only through it (stage 13: Mediator) |
 | `src/miniharness/tools/` | `Tool` classes, `ToolCommand`, and the `Toolbox` invoker with undo (stage 5: Command); `PolicyChain` permissions (stage 7: Chain of Responsibility); `ToolboxView` (stage 8: Proxy); `AgentTool` (stage 12: Composite) |
 | `DECISIONS.md` | Architecture decision log: options, trade-offs, open questions |
 | `PATTERNS.md` | Your learning journal |
@@ -61,7 +63,7 @@ Only add a pattern once you feel the pain it solves.
 | 10 | Typed events on a shared bus; live console + JSONL trace | Observer ✅ |
 | 11 | Checkpoint, rewind (with files), save/resume, fork | Memento, Prototype ✅ |
 | 12 | Sub-agents as tools (`AgentTool`); trees with derived side effects | Composite ✅ |
-| 13 | Coordinator routing between agents | Mediator |
+| 13 | Peer team (writer ↔ reviewer) routed by a `Team` mediator | Mediator ✅ |
 | 14 | Cost/HTML/JSON over the trace tree | Visitor |
 | 15 | Streaming tokens and events | Iterator |
 | 16 | `Agent("task").run()` hides everything | Facade |

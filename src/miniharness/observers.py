@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, TextIO
 
-from miniharness.events import Event, ModelCalled, RunFinished, RunStarted, StateChanged, ToolCalled
+from miniharness.events import Event, MessageRouted, ModelCalled, RunFinished, RunStarted, StateChanged, ToolCalled
 
 
 class ConsolePrinter:
@@ -32,6 +32,8 @@ class ConsolePrinter:
                 if decision is not None and decision.verdict.value != "allow":
                     line += f"  (by {decision.policy})"
                 self._print(indent + line)
+            case MessageRouted(sender=sender, to=to, text=text):
+                self._print(f"{indent}── {sender} → {to}: {_shorten(text, 100)}")
             case RunFinished():
                 pass  # the caller prints the answer
 

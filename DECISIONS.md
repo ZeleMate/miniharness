@@ -934,7 +934,7 @@ from `agent.messages` afterwards.
   build the view, then add the `AgentTool`). The constructor uses it, so duplicate checks live in one place.
 
 ### D131. A sub-agent's stop or failure becomes a tool result for the parent
-**Status:** open (made during implementation)
+**Status:** open for trees; teams stop immediately instead (D141)
 - If a sub-agent hits the budget, it *returns* `"[stopped: budget] ..."`, which the parent sees as
   the tool's output. The parent then tries its own next call, which the shared budget also refuses.
   It works out, but a `StopRun` inside a sub-agent arguably should stop the whole tree immediately.
@@ -944,3 +944,83 @@ from `agent.messages` afterwards.
 - The sub-agent's `ToolCalled` events arrive *before* the parent's `ToolCalled` for the `AgentTool`
   itself, because the outer call only finishes when the inner run does. Rebuilding the tree from a
   trace needs `depth` plus order. Stage 14's Visitor will walk that tree.
+
+---
+
+## Stage 13: Mediator
+
+### D133. A peer team that talks only through a `Team` mediator (your call)
+**Status:** accepted
+- **Mediator vs Composite (stage 12):** in a tree, a parent *owns* its children and calls them.
+  In a team, nobody owns anybody: members only get `send_message`, and the routing graph lives in
+  one place. Changing who may talk to whom means editing `routes`, not the agents.
+- Partly speculative when chosen (nothing in the project forced it), but it covers a real
+  multi-agent shape trees can't: equals talking back and forth (review loops, handoffs).
+
+### D134. Each member sees only messages addressed to it (your call)
+**Status:** accepted
+- Contexts stay small and roles stay clean. Only the mediator (`team.log`) sees everything.
+- **Cost found live:** the reviewer didn't know the original task. See D142.
+
+### D135. Members keep their conversation between turns: `Agent.follow_up()` (your call)
+**Status:** accepted
+- `follow_up(text)` continues a finished run with a new user message, so the writer revises with
+  its earlier draft and the feedback in context. `max_steps` applies per turn, and each turn emits
+  `RunStarted`.
+
+### D136. Finishing is `approve()`: the result is the last message the finisher received (your call; found live)
+**Status:** accepted
+- **What happened:** with `finish(result)`, a live reviewer "approved" by passing its *own* rewritten
+  slogan, which ignored the task's constraints and wasn't the writer's work.
+- **Now:** `approve()` takes no text. The team's output is always a teammate's message.
+- **Lesson:** when a role matters, enforce it in the mediator's API, not in the prompt.
+
+### D137. Team tools are added by wrapping each member's `ToolSet`, on copies of the agents
+**Status:** accepted (made during implementation)
+- `_MemberTools` adds `send_message`/`approve` and delegates everything else to the member's own
+  tools. It's a Decorator over `ToolSet`. The team holds `copy.copy`s of the agents, so the caller's
+  agents are never modified (tested).
+- Team tools skip the member's policy chain: they only queue a message for the mediator and touch
+  nothing outside it.
+
+### D138. Allowed recipients are both a schema `enum` and a server-side check
+**Status:** accepted (made during implementation)
+- The `enum` steers the model toward valid recipients. `_send()` still rejects anything else.
+  The schema is a hint and the check is the enforcement, the same defense-in-depth idea as D75.
+
+### D139. A member's turn ends when its own run finishes
+**Status:** open (made during implementation)
+- After `send_message`, the model gets "Message sent" and replies once more before its run ends.
+  That's an extra short model call per turn (8 calls for 4 messages in the live run).
+- **Alternative:** end the turn as soon as the member sends (a `StopRun`-like signal from the tool),
+  which would halve the calls, at the cost of members never sending two messages in one turn.
+
+### D140. Messages are delivered first in, first out; several sends in one turn are all delivered
+**Status:** accepted (made during implementation)
+
+### D141. A team ends on approval, `max_turns`, a dead end, or a stopped member
+**Status:** accepted (made during implementation)
+- **Dead end:** a member that finishes without sending or approving ends the team with
+  `"[stopped: no messages] <its answer>"`.
+- **Stopped member** (e.g. the shared budget): the whole team stops at once, unlike stage 12's
+  trees (D131), where the parent carries on.
+
+### D142. The mediator shares the team's brief on each member's first turn (found live)
+**Status:** accepted
+- **What happened:** with strict isolation (D134), the reviewer couldn't check "exactly 7 words"
+  because it never saw the task. Telling the writer to forward it put the requirements *inside* the
+  draft, and that text then became the approved result.
+- **Now:** a member's first message is prefixed with `Team task: ...`. Sharing the brief is coordination,
+  which is the mediator's job, while messages stay private.
+
+### D143. Mechanical requirements belong in code, not in a reviewer's judgment
+**Status:** open (found live)
+- Live, one reviewer approved a 6-word slogan for a 7-word rule. Another flagged a correct 7-word draft as
+  8 words. An LLM is unreliable at counting.
+- **Option:** validators on `approve()`, e.g. `Team(..., validators=[exact_words(7)])`, that reject an
+  approval with a concrete reason. Code checks what can be checked, and the LLM judges the rest.
+
+### D144. `MessageRouted` is emitted by the mediator, outside any member's scope
+**Status:** accepted (made during implementation)
+- So it's tagged `agent=""`, or with the enclosing agent if a team runs inside one (e.g. a team behind an
+  `AgentTool`). The console shows `── writer → reviewer: ...`.

@@ -61,6 +61,17 @@ class ToolCalled:
 
 
 @dataclass(frozen=True)
+class MessageRouted:
+    """A team mediator delivered a message from one member to another."""
+
+    sender: str
+    to: str
+    text: str
+    agent: str = ""
+    depth: int = 0
+
+
+@dataclass(frozen=True)
 class RunFinished:
     state: str  # "done" or "stopped"
     answer: str
@@ -68,7 +79,7 @@ class RunFinished:
     depth: int = 0
 
 
-Event = Union[RunStarted, StateChanged, ModelCalled, ToolCalled, RunFinished]
+Event = Union[RunStarted, StateChanged, ModelCalled, ToolCalled, MessageRouted, RunFinished]
 Handler = Callable[[Event], None]
 
 

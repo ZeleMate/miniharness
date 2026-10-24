@@ -261,3 +261,25 @@ One entry per pattern, written when you apply it. Template:
 - **Try it:** give the researcher its own cheaper model (`fork(provider=...)` on the prototype).
   Where does the cost show up now, and does the shared budget still apply?
 - **Your notes:**
+
+---
+
+## Mediator (stage 13)
+
+- **Problem:** agents that need to talk *as equals*, like a writer and a reviewer going back and forth.
+  A tree (stage 12) only lets a parent call down. Wiring peers to each other directly makes every
+  agent know every other one.
+- **Shape:** `Team(members, routes, finishers)`. Members get `send_message(to, text)` (limited by
+  `routes`) and finishers get `approve()`. The team delivers messages, runs turns and decides when
+  it's done. Members hold no references to each other.
+- **Mediator vs Observer:** both decouple senders from receivers. Observer *broadcasts* to whoever
+  subscribed, and the subject doesn't care who. A Mediator *routes* with knowledge of every
+  participant and the rules between them.
+- **Live lessons:** a reviewer substituted its own text (so `approve()` replaced `finish(result)`,
+  D136), and isolation hid the brief from the reviewer (so the mediator now shares it, D142).
+  Roles are enforced by the mediator's API, not by prompts.
+- **Harness connection:** "handoff" and "supervisor" multi-agent setups (OpenAI Swarm, LangGraph
+  supervisors) are mediators: the routing lives outside the agents.
+- **Try it:** add an `editor` member between writer and reviewer by editing only `routes`. Did any
+  agent's code or prompt need to change?
+- **Your notes:**

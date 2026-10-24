@@ -26,7 +26,7 @@ from typing import Any
 
 from miniharness.checkpoint import Checkpoint
 from miniharness.events import EventBus, RunFinished, RunStarted, StateChanged, agent_scope
-from miniharness.lifecycle import AgentState, Idle, Thinking, from_snapshot
+from miniharness.lifecycle import AgentState, Done, Idle, Thinking, from_snapshot
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider
 from miniharness.tools import Toolbox, ToolSet, default_tools
@@ -62,6 +62,17 @@ class Agent:
             self.messages = self.initial_messages(task)
             self.model_calls = 0
             self.events.emit(RunStarted(task))
+            self._transition(Thinking())
+        return self.state
+
+    def follow_up(self, text: str) -> AgentState:
+        """Continue a finished run with a new user message (keeps the conversation)."""
+        if not isinstance(self.state, Done):
+            raise RuntimeError(f"Can only follow up on a finished run, not one that is {self.state.name}")
+        with agent_scope(self.name):
+            self.messages.append(Message(role="user", content=text))
+            self.model_calls = 0  # max_steps applies per turn
+            self.events.emit(RunStarted(text))
             self._transition(Thinking())
         return self.state
 
