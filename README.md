@@ -56,6 +56,16 @@ Harness("cheap", registry=mine).run("Hi")
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
 
+## Study notebook
+
+[`docs/study_notebook.ipynb`](docs/study_notebook.ipynb) condenses the whole project for studying: every
+pattern with its problem, a small runnable example (offline, using `MockProvider`), the decisions to
+remember, the bugs that live runs found, and live lists of open decisions and exercises.
+
+```bash
+uv run --with jupyter jupyter lab docs/study_notebook.ipynb
+```
+
 ## Layout
 
 | File | What it is |
