@@ -62,13 +62,6 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 telling what we built, what broke, what we decided and why, and what live runs taught us, plus an
 epilogue with the cross-cutting lessons and open questions, and a cheat-sheet appendix.
 
-For hands-on review, [`docs/study_notebook.ipynb`](docs/study_notebook.ipynb) has a small runnable example
-per pattern (offline, using `MockProvider`):
-
-```bash
-uv run --with jupyter jupyter lab docs/study_notebook.ipynb
-```
-
 ## Layout
 
 | File | What it is |
