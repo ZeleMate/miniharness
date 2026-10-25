@@ -8,11 +8,22 @@ import json
 from typing import Any, Iterable, Iterator
 
 from miniharness.errors import MalformedResponseError
-from miniharness.types import Completed, LLMResponse, Message, StreamChunk, TextDelta, ToolCall, ToolSpec, Usage
+from miniharness.types import (
+    Completed,
+    LLMResponse,
+    Message,
+    StreamChunk,
+    TextDelta,
+    ToolCall,
+    ToolSpec,
+    Usage,
+)
 
 
 class OpenAIChatAdapter:
-    def to_wire(self, messages: list[Message], tools: dict[str, ToolSpec]) -> dict[str, Any]:
+    def to_wire(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> dict[str, Any]:
         request: dict[str, Any] = {"messages": [self._message(m) for m in messages]}
         if tools:
             request["tools"] = [
@@ -30,8 +41,16 @@ class OpenAIChatAdapter:
 
     def from_wire(self, response: Any) -> LLMResponse:
         choice = response.choices[0]
-        calls = [(tc.id, tc.function.name, tc.function.arguments) for tc in (choice.message.tool_calls or [])]
-        return self._response(choice.message.content or "", calls, choice.finish_reason, self._usage(response))
+        calls = [
+            (tc.id, tc.function.name, tc.function.arguments)
+            for tc in (choice.message.tool_calls or [])
+        ]
+        return self._response(
+            choice.message.content or "",
+            calls,
+            choice.finish_reason,
+            self._usage(response),
+        )
 
     def from_stream(self, chunks: Iterable[Any]) -> Iterator[StreamChunk]:
         """Translate a `stream=True` response: text as it arrives, then the whole response.
@@ -65,7 +84,11 @@ class OpenAIChatAdapter:
         yield Completed(self._response("".join(text), ordered, finish_reason, usage))
 
     def _response(
-        self, content: str, calls: list[tuple[str, str, str]], finish_reason: str | None, usage: Usage | None
+        self,
+        content: str,
+        calls: list[tuple[str, str, str]],
+        finish_reason: str | None,
+        usage: Usage | None,
     ) -> LLMResponse:
         try:
             tool_calls = [
@@ -73,7 +96,9 @@ class OpenAIChatAdapter:
                 for id_, name, arguments in calls
             ]
         except json.JSONDecodeError as e:
-            raise MalformedResponseError(f"Tool-call arguments are not valid JSON: {e}", usage) from e
+            raise MalformedResponseError(
+                f"Tool-call arguments are not valid JSON: {e}", usage
+            ) from e
         if tool_calls:
             stop = "tool_calls"
         elif finish_reason == "length":
@@ -93,7 +118,9 @@ class OpenAIChatAdapter:
         if usage is None:
             return None
         # OpenRouter adds `cost` (USD); plain OpenAI-compatible servers don't
-        return Usage(usage.prompt_tokens, usage.completion_tokens, getattr(usage, "cost", None))
+        return Usage(
+            usage.prompt_tokens, usage.completion_tokens, getattr(usage, "cost", None)
+        )
 
     def _message(self, m: Message) -> dict[str, Any]:
         if m.role == "assistant":
@@ -103,11 +130,18 @@ class OpenAIChatAdapter:
                     {
                         "id": tc.id,
                         "type": "function",
-                        "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                        "function": {
+                            "name": tc.name,
+                            "arguments": json.dumps(tc.arguments),
+                        },
                     }
                     for tc in m.tool_calls
                 ]
             return entry
         if m.role == "tool":
-            return {"role": "tool", "tool_call_id": m.tool_call_id, "content": m.content}
+            return {
+                "role": "tool",
+                "tool_call_id": m.tool_call_id,
+                "content": m.content,
+            }
         return {"role": m.role, "content": m.content}

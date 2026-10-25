@@ -85,7 +85,9 @@ def test_a_test_owns_its_registry_and_needs_no_cleanup():
     mine = default_registry.copy()
     mine.add("echo", EchoProvider)
 
-    h = Harness("echo", registry=mine, console=False)  # the dependency is a visible parameter
+    h = Harness(
+        "echo", registry=mine, console=False
+    )  # the dependency is a visible parameter
 
     assert isinstance(h.stack.base, EchoProvider)
     assert "echo" not in default_registry  # nothing to reset

@@ -39,14 +39,15 @@ You chose to extend the loop with two new Template Method hooks and a new lifecy
 
 ```python
 class PlannerAgent(Agent):
-    def first_state(self):          # start by planning instead of thinking
+    def first_state(self):  # start by planning instead of thinking
         return Planning()
+
 
 class ReviewerAgent(Agent):
     def after_answer(self, response):
         if not self._reviewed_this_turn():
             self.messages.append(Message(role="user", content=self.review_request))
-            return Thinking()       # one more pass of the normal loop
+            return Thinking()  # one more pass of the normal loop
         return super().after_answer(response)
 ```
 

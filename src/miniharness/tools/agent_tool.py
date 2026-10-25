@@ -18,14 +18,18 @@ if TYPE_CHECKING:
 class AgentTool(Tool):
     parameters = {
         "type": "object",
-        "properties": {"task": {"type": "string", "description": "What the sub-agent should do"}},
+        "properties": {
+            "task": {"type": "string", "description": "What the sub-agent should do"}
+        },
         "required": ["task"],
     }
     reversible = False  # a sub-agent's run isn't undone as a unit (DECISIONS.md D127)
     # Two sub-runs at once would interleave their events and share the provider stack (D216)
     thread_safe = False
 
-    def __init__(self, name: str, description: str, prototype: "Agent", max_depth: int = 3):
+    def __init__(
+        self, name: str, description: str, prototype: "Agent", max_depth: int = 3
+    ):
         self.name = name
         self.description = description
         self.prototype = prototype
@@ -49,7 +53,9 @@ class AgentTool(Tool):
     def run(self, task: str) -> ToolResult:  # type: ignore[override]
         depth = current_depth() + 1
         if depth > self.max_depth:
-            raise RecursionError(f"{self.name} would run at depth {depth}; the limit is {self.max_depth}")
+            raise RecursionError(
+                f"{self.name} would run at depth {depth}; the limit is {self.max_depth}"
+            )
         sub = copy.copy(self.prototype)  # Prototype: same class and config, fresh run
         sub.name = self.name
         return ToolResult(sub.run(task))

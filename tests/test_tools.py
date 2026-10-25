@@ -45,7 +45,9 @@ def test_file_tools_only_with_an_explicit_workspace(tmp_path):
 
 
 def test_specs_expose_description_and_schema_only():
-    assert Toolbox([Add()]).specs() == {"add": {"description": Add.description, "parameters": Add.parameters}}
+    assert Toolbox([Add()]).specs() == {
+        "add": {"description": Add.description, "parameters": Add.parameters}
+    }
 
 
 def test_duplicate_tool_names_are_rejected():
@@ -145,7 +147,9 @@ def test_a_command_cannot_be_undone_twice(box):
 # --- Workspace confinement ---------------------------------------------------
 
 
-@pytest.mark.parametrize("path", ["../escape.txt", "sub/../../escape.txt", "/etc/passwd"])
+@pytest.mark.parametrize(
+    "path", ["../escape.txt", "sub/../../escape.txt", "/etc/passwd"]
+)
 def test_paths_outside_the_workspace_are_rejected(box, tmp_path, path):
     result = box.execute(call("write_file", path=path, content="x"))
 
@@ -159,7 +163,9 @@ def test_symlinks_pointing_outside_are_rejected(tmp_path):
     (tmp_path / "secret.txt").write_text("secret")
     (workspace / "link.txt").symlink_to(tmp_path / "secret.txt")
 
-    result = Toolbox([ReadFile(workspace)], policy=PolicyChain.allow_all()).execute(call("read_file", path="link.txt"))
+    result = Toolbox([ReadFile(workspace)], policy=PolicyChain.allow_all()).execute(
+        call("read_file", path="link.txt")
+    )
 
     assert result.startswith("Error: PermissionError")
 

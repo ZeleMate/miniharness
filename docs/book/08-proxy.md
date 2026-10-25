@@ -23,8 +23,8 @@ crash a run that didn't need the backup at all.
 `LazyProvider` defers construction until the first call:
 
 ```python
-backup = lazy_provider("anthropic:claude-haiku-5-5")   # no key, no client, nothing built
-FallbackChain([main, backup])                          # backup built only if main fails
+backup = lazy_provider("anthropic:claude-haiku-5-5")  # no key, no client, nothing built
+FallbackChain([main, backup])  # backup built only if main fails
 ```
 
 A `materialize()` method lets callers fail fast on purpose (D69): the example builds the *main* provider
@@ -42,7 +42,7 @@ back to the top of each module (D70).
 `ToolboxView` exposes only some of a Toolbox's tools:
 
 ```python
-reader_tools = ToolboxView.read_only(toolbox)   # add, multiply, current_time, read_file
+reader_tools = ToolboxView.read_only(toolbox)  # add, multiply, current_time, read_file
 ```
 
 Hidden tools don't appear in the tool list sent to the model, and calling one returns exactly the same

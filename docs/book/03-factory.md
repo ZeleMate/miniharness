@@ -28,6 +28,7 @@ greppable. A GoF Factory Method, with each class owning a `from_config()` classm
 @register_provider("openrouter")
 class OpenRouterProvider: ...
 
+
 provider = create_provider("openrouter:qwen/qwen3-coder")
 ```
 

@@ -52,7 +52,9 @@ class SystemPromptBuilder:
             "tool_rules": _bullets(self._tool_rules),
             "instructions": _bullets(self._instructions),
             # Sorted so the same facts always render identically
-            "environment": "\n".join(f"- {k}: {v}" for k, v in sorted(self._environment.items())),
+            "environment": "\n".join(
+                f"- {k}: {v}" for k, v in sorted(self._environment.items())
+            ),
         }
         parts = []
         for section in _ORDER:

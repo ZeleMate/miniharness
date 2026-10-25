@@ -110,7 +110,9 @@ class CircuitBreaker(_Wrapper):
         self.transitions.append((self.state.name, new.name))
         self.state = new
 
-    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse:
         self.state.admit(self)
         try:
             response = self.inner.complete(messages, tools)
@@ -120,7 +122,9 @@ class CircuitBreaker(_Wrapper):
         self.state.succeeded(self)
         return response
 
-    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+    def stream(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> Iterator[StreamChunk]:
         """Same as complete(); a stream abandoned before Completed counts as neither outcome.
 
         Success is recorded *at* Completed, before passing it on: a consumer may stop

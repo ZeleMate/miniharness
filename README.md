@@ -40,17 +40,22 @@ from miniharness import Harness
 load_dotenv(".env")
 h = Harness("openrouter", budget=0.05, workspace="workspace", approve=True)
 print(h.run("Write a haiku about undo to haiku.txt"))
-print(h.report())   # calls, tokens, cost
-h.rewind()          # undo the file changes
+print(h.report())  # calls, tokens, cost
+h.rewind()  # undo the file changes
 
 # The agent type and the provider vary independently (Bridge):
 from miniharness import PlannerAgent
+
 Harness("openrouter", agent_type=PlannerAgent).run("What is (17 * 23) + 4?")
 
 # Your own providers go in your own registry; the built-in one stays untouched:
 from miniharness.providers import OpenRouterProvider, default_registry
+
 mine = default_registry.copy()
-mine.add("cheap", lambda model="deepseek/deepseek-chat", **kw: OpenRouterProvider(model=model, **kw))
+mine.add(
+    "cheap",
+    lambda model="deepseek/deepseek-chat", **kw: OpenRouterProvider(model=model, **kw),
+)
 Harness("cheap", registry=mine).run("Hi")
 ```
 

@@ -25,14 +25,19 @@ from miniharness.types import Usage
 
 def call(name, **arguments):
     return LLMResponse(
-        Message(role="assistant", tool_calls=[ToolCall(id=f"c-{name}", name=name, arguments=arguments)]),
+        Message(
+            role="assistant",
+            tool_calls=[ToolCall(id=f"c-{name}", name=name, arguments=arguments)],
+        ),
         "tool_calls",
         Usage(10, 5, cost_usd=0.01),
     )
 
 
 def answer(text, cost=0.01):
-    return LLMResponse(Message(role="assistant", content=text), "end", Usage(10, 5, cost_usd=cost))
+    return LLMResponse(
+        Message(role="assistant", content=text), "end", Usage(10, 5, cost_usd=cost)
+    )
 
 
 def harness(script, **kwargs):
@@ -44,7 +49,9 @@ def harness(script, **kwargs):
 
 
 def test_the_full_stack_is_built_in_the_recommended_order(tmp_path):
-    stack = build_stack(MockProvider(), budget=1.0, cache=tmp_path, fallback="openrouter:some/model")
+    stack = build_stack(
+        MockProvider(), budget=1.0, cache=tmp_path, fallback="openrouter:some/model"
+    )
 
     cache = stack.provider
     assert isinstance(cache, DiskCache) and cache is stack.cache
@@ -56,7 +63,9 @@ def test_the_full_stack_is_built_in_the_recommended_order(tmp_path):
     assert stack.tracker.inner is stack.base is stack.chain
     main, backup = stack.chain.providers
     assert isinstance(main, CircuitBreaker) and isinstance(main.inner, MockProvider)
-    assert isinstance(backup, LazyProvider) and not backup.materialized  # no key needed unless used
+    assert (
+        isinstance(backup, LazyProvider) and not backup.materialized
+    )  # no key needed unless used
 
 
 def test_what_isnt_asked_for_is_left_out():
@@ -78,10 +87,14 @@ def test_a_spec_string_is_built_by_the_factory():
 
 def test_cache_hits_are_free_and_dont_count_against_the_budget(tmp_path):
     hi = [Message(role="user", content="hi")]
-    stack = build_stack(MockProvider([answer("ok", cost=0.01)]), budget=0.015, cache=tmp_path)
+    stack = build_stack(
+        MockProvider([answer("ok", cost=0.01)]), budget=0.015, cache=tmp_path
+    )
 
     stack.provider.complete(hi, {})
-    stack.provider.complete(hi, {})  # a miss would exceed the budget and the mock is empty
+    stack.provider.complete(
+        hi, {}
+    )  # a miss would exceed the budget and the mock is empty
 
     assert (stack.cache.hits, stack.cache.misses) == (1, 1)
     assert len(stack.tracker.calls) == 1
@@ -100,8 +113,15 @@ def test_run_returns_the_answer_and_report_sums_the_calls():
 
 def test_report_adds_cache_and_fallback_details(tmp_path):
     # The D103 path: a fallback failure and a cache in the same report
-    main = MockProvider([MalformedResponseError("bad json", Usage(1, 1, cost_usd=0.0))], model="main")
-    h = Harness(main, fallback=MockProvider([answer("ok")], model="backup"), cache=tmp_path, console=False)
+    main = MockProvider(
+        [MalformedResponseError("bad json", Usage(1, 1, cost_usd=0.0))], model="main"
+    )
+    h = Harness(
+        main,
+        fallback=MockProvider([answer("ok")], model="backup"),
+        cache=tmp_path,
+        console=False,
+    )
 
     assert h.run("hi") == "ok"
     assert h.report() == (
@@ -126,7 +146,10 @@ def test_the_budget_is_on_by_default():
     h.follow_up("three")
 
     assert h.agent.state.name == "stopped"
-    assert "budget" in h.agent.state.answer.lower() or "spent" in h.agent.state.answer.lower()
+    assert (
+        "budget" in h.agent.state.answer.lower()
+        or "spent" in h.agent.state.answer.lower()
+    )
 
 
 def test_instructions_and_workspace_go_into_the_system_prompt(tmp_path):
@@ -138,7 +161,10 @@ def test_instructions_and_workspace_go_into_the_system_prompt(tmp_path):
 
 
 def test_a_system_prompt_replaces_the_default():
-    assert harness([], system_prompt="You are terse.").agent.system_prompt == "You are terse."
+    assert (
+        harness([], system_prompt="You are terse.").agent.system_prompt
+        == "You are terse."
+    )
 
 
 # --- safe defaults: tools and approval -----------------------------------------------------
@@ -156,7 +182,9 @@ def test_a_cache_inside_the_workspace_is_rejected(tmp_path):
     assert not (tmp_path / "cache").exists()  # rejected before anything is created
 
 
-def test_the_default_cache_is_rejected_when_the_workspace_is_the_cwd(tmp_path, monkeypatch):
+def test_the_default_cache_is_rejected_when_the_workspace_is_the_cwd(
+    tmp_path, monkeypatch
+):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError, match="inside the workspace"):
         harness([], workspace=".", cache=True)
@@ -176,7 +204,10 @@ def test_a_cache_beside_the_workspace_is_fine(tmp_path):
 
 
 def test_side_effects_are_denied_unless_approved(tmp_path):
-    h = harness([call("write_file", path="a.txt", content="hi"), answer("tried")], workspace=tmp_path)
+    h = harness(
+        [call("write_file", path="a.txt", content="hi"), answer("tried")],
+        workspace=tmp_path,
+    )
 
     h.run("write")
 
@@ -185,7 +216,11 @@ def test_side_effects_are_denied_unless_approved(tmp_path):
 
 
 def test_approve_true_allows_and_rewind_undoes(tmp_path):
-    h = harness([call("write_file", path="a.txt", content="hi"), answer("done")], workspace=tmp_path, approve=True)
+    h = harness(
+        [call("write_file", path="a.txt", content="hi"), answer("done")],
+        workspace=tmp_path,
+        approve=True,
+    )
 
     h.run("write")
     assert (tmp_path / "a.txt").read_text() == "hi"
@@ -211,8 +246,14 @@ def test_an_approve_callback_is_asked_with_the_call(tmp_path):
 
 
 def test_extra_policies_are_checked_before_the_defaults(tmp_path):
-    script = [call("write_file", path="a.txt", content="1"), call("write_file", path="b.txt", content="2"), answer("ok")]
-    h = harness(script, workspace=tmp_path, approve=True, policies=[MaxCalls("write_file", 1)])
+    script = [
+        call("write_file", path="a.txt", content="1"),
+        call("write_file", path="b.txt", content="2"),
+        answer("ok"),
+    ]
+    h = harness(
+        script, workspace=tmp_path, approve=True, policies=[MaxCalls("write_file", 1)]
+    )
 
     h.run("write twice")
 
@@ -268,7 +309,10 @@ def test_stream_yields_tokens_and_mutes_the_console(capsys):
 
     events = list(h.stream("count"))
 
-    assert "".join(e.text for e in events if isinstance(e, TokenStreamed)) == "one two three"
+    assert (
+        "".join(e.text for e in events if isinstance(e, TokenStreamed))
+        == "one two three"
+    )
     assert isinstance(events[-1], RunFinished)
     assert capsys.readouterr().out == ""  # the caller displays the run, not the printer
     assert h.agent.stream is False  # switched on for that run only
@@ -305,7 +349,9 @@ def test_breaking_out_of_a_stream_blocks_the_next_call_under_a_budget():
 
 def test_a_run_stopped_by_the_budget_is_resumed_by_a_new_harness(tmp_path):
     saved = tmp_path / "run.json"
-    first = harness([call("add", a=1, b=2), answer("never")], budget=0.005, checkpoint=saved)
+    first = harness(
+        [call("add", a=1, b=2), answer("never")], budget=0.005, checkpoint=saved
+    )
     first.run("1+2")  # the first call costs 0.01 and blows the budget at the next check
     assert first.agent.state.name == "stopped"
     assert first.saved_run is not None
@@ -335,13 +381,18 @@ def test_a_helper_is_a_read_only_tool_on_the_same_bus_and_budget(tmp_path):
         ]
     )
     h = Harness(provider, workspace=tmp_path, console=False)
-    helper = h.add_helper("researcher", "Reads files and summarizes them.", ["Reply briefly."])
+    helper = h.add_helper(
+        "researcher", "Reads files and summarizes them.", ["Reply briefly."]
+    )
     seen = []
     h.events.subscribe(seen.append)
 
     assert h.run("what do the notes say?") == "The notes are about secret plans."
     assert "write_file" not in helper.tools.specs()
-    assert {e.agent for e in seen if isinstance(e, ToolCalled)} == {"agent", "researcher"}
+    assert {e.agent for e in seen if isinstance(e, ToolCalled)} == {
+        "agent",
+        "researcher",
+    }
     assert len(h.tracker.calls) == 4
 
 
@@ -358,7 +409,9 @@ def test_a_helper_is_visible_to_a_read_only_harness(tmp_path):
 
 def scripted_registry(*script):
     """A registry whose "scripted" provider replays `script`, built fresh for each test."""
-    return ProviderRegistry({"scripted": lambda model="scripted": MockProvider(list(script), model=model)})
+    return ProviderRegistry(
+        {"scripted": lambda model="scripted": MockProvider(list(script), model=model)}
+    )
 
 
 def test_harness_looks_up_specs_in_an_injected_registry():
@@ -370,15 +423,21 @@ def test_harness_looks_up_specs_in_an_injected_registry():
 
 
 def test_the_fallback_spec_uses_the_same_injected_registry():
-    stack = build_stack(MockProvider(), fallback="scripted:backup", registry=scripted_registry())
+    stack = build_stack(
+        MockProvider(), fallback="scripted:backup", registry=scripted_registry()
+    )
 
     backup = stack.chain.providers[1]
-    assert isinstance(backup, LazyProvider) and not backup.materialized  # still lazy (D69)
+    assert (
+        isinstance(backup, LazyProvider) and not backup.materialized
+    )  # still lazy (D69)
     assert backup.materialize().model == "backup"
 
 
 def test_a_spec_unknown_to_the_injected_registry_fails_at_startup():
-    with pytest.raises(ValueError, match="Unknown provider 'openrouter'. Available: scripted"):
+    with pytest.raises(
+        ValueError, match="Unknown provider 'openrouter'. Available: scripted"
+    ):
         Harness("openrouter", registry=scripted_registry(), console=False)
 
 
@@ -386,4 +445,6 @@ def test_lazy_provider_builds_from_the_injected_registry_on_first_use():
     lazy = lazy_provider("scripted", registry=scripted_registry(answer("ok")))
 
     assert not lazy.materialized
-    assert lazy.complete([Message(role="user", content="hi")], {}).message.content == "ok"
+    assert (
+        lazy.complete([Message(role="user", content="hi")], {}).message.content == "ok"
+    )

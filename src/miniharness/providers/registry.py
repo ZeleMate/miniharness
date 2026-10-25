@@ -77,7 +77,9 @@ class ProviderRegistry:
         try:
             factory = self._providers[name]
         except KeyError:
-            raise ValueError(f"Unknown provider {name!r}. Available: {', '.join(self.names())}") from None
+            raise ValueError(
+                f"Unknown provider {name!r}. Available: {', '.join(self.names())}"
+            ) from None
         if model:
             kwargs["model"] = model
         return factory(**kwargs)

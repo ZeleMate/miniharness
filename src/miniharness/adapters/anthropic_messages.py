@@ -7,24 +7,45 @@ tool results go inside a *user* message.
 
 from typing import Any, Iterator
 
-from miniharness.types import Completed, LLMResponse, Message, StreamChunk, TextDelta, ToolCall, ToolSpec, Usage
+from miniharness.types import (
+    Completed,
+    LLMResponse,
+    Message,
+    StreamChunk,
+    TextDelta,
+    ToolCall,
+    ToolSpec,
+    Usage,
+)
 
 _STOP_REASONS = {"tool_use": "tool_calls", "end_turn": "end"}
 
 
 class AnthropicMessagesAdapter:
-    def to_wire(self, messages: list[Message], tools: dict[str, ToolSpec]) -> dict[str, Any]:
+    def to_wire(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> dict[str, Any]:
         wire: list[dict[str, Any]] = []
         for m in messages:
             if m.role == "user":
                 wire.append({"role": "user", "content": m.content})
             elif m.role == "assistant":
-                wire.append({"role": "assistant", "content": self._assistant_content(m)})
+                wire.append(
+                    {"role": "assistant", "content": self._assistant_content(m)}
+                )
             elif m.role == "tool":
-                block = {"type": "tool_result", "tool_use_id": m.tool_call_id, "content": m.content}
+                block = {
+                    "type": "tool_result",
+                    "tool_use_id": m.tool_call_id,
+                    "content": m.content,
+                }
                 # All results for one assistant turn must share a single user message
                 last = wire[-1] if wire else None
-                if last and last["role"] == "user" and isinstance(last["content"], list):
+                if (
+                    last
+                    and last["role"] == "user"
+                    and isinstance(last["content"], list)
+                ):
                     last["content"].append(block)
                 else:
                     wire.append({"role": "user", "content": [block]})
@@ -35,7 +56,11 @@ class AnthropicMessagesAdapter:
             request["system"] = system
         if tools:
             request["tools"] = [
-                {"name": name, "description": spec["description"], "input_schema": spec["parameters"]}
+                {
+                    "name": name,
+                    "description": spec["description"],
+                    "input_schema": spec["parameters"],
+                }
                 for name, spec in tools.items()
             ]
         return request
@@ -48,7 +73,12 @@ class AnthropicMessagesAdapter:
             if b.type == "tool_use"
         ]
         return LLMResponse(
-            message=Message(role="assistant", content=text, tool_calls=tool_calls, raw=response.content),
+            message=Message(
+                role="assistant",
+                content=text,
+                tool_calls=tool_calls,
+                raw=response.content,
+            ),
             stop_reason=_STOP_REASONS.get(response.stop_reason, response.stop_reason),
             usage=self._usage(response),
         )
@@ -78,5 +108,12 @@ class AnthropicMessagesAdapter:
         if m.content:
             content.append({"type": "text", "text": m.content})
         for tc in m.tool_calls:
-            content.append({"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.arguments})
+            content.append(
+                {
+                    "type": "tool_use",
+                    "id": tc.id,
+                    "name": tc.name,
+                    "input": tc.arguments,
+                }
+            )
         return content

@@ -27,7 +27,13 @@ class Checkpoint:
     created_at: str
 
     @classmethod
-    def capture(cls, messages: list[Message], state: dict[str, Any], model_calls: int, tool_mark: ToolMark | None) -> "Checkpoint":
+    def capture(
+        cls,
+        messages: list[Message],
+        state: dict[str, Any],
+        model_calls: int,
+        tool_mark: ToolMark | None,
+    ) -> "Checkpoint":
         return cls(
             messages=tuple(copy.deepcopy(messages)),
             state=copy.deepcopy(state),
@@ -76,7 +82,9 @@ def _message_to_dict(m: Message) -> dict[str, Any]:
     return {
         "role": m.role,
         "content": m.content,
-        "tool_calls": [{"id": c.id, "name": c.name, "arguments": c.arguments} for c in m.tool_calls],
+        "tool_calls": [
+            {"id": c.id, "name": c.name, "arguments": c.arguments} for c in m.tool_calls
+        ],
         "tool_call_id": m.tool_call_id,
         "raw": _raw_to_json(m.raw),
     }
@@ -88,7 +96,9 @@ def _message_from_dict(d: dict[str, Any]) -> Message:
         content=d["content"],
         tool_calls=[ToolCall(**c) for c in d["tool_calls"]],
         tool_call_id=d["tool_call_id"],
-        raw=d["raw"],  # plain dicts: the Anthropic API accepts them back as content blocks
+        raw=d[
+            "raw"
+        ],  # plain dicts: the Anthropic API accepts them back as content blocks
     )
 
 

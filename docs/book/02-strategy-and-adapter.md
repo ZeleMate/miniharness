@@ -24,7 +24,10 @@ Protocol (D2):
 ```python
 class Provider(Protocol):
     model: str
-    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse: ...
+
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse: ...
 ```
 
 A Protocol is *structural*: any class with a matching `complete()` method qualifies, whether or not it

@@ -13,7 +13,13 @@ from miniharness.providers.registry import (
 )
 from miniharness.providers.stack import Stack, build_stack
 from miniharness.providers.streaming import as_stream, collect, stream_from
-from miniharness.providers.wrappers import BudgetGuard, DiskCache, FallbackChain, Retry, UsageTracker
+from miniharness.providers.wrappers import (
+    BudgetGuard,
+    DiskCache,
+    FallbackChain,
+    Retry,
+    UsageTracker,
+)
 
 # Importing the provider modules above is what registers them with the factory.
 __all__ = [

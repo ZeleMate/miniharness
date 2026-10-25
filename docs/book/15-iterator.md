@@ -19,8 +19,10 @@ chunk holding the full response (D156):
 ```python
 for chunk in provider.stream(messages, tools):
     match chunk:
-        case TextDelta(text=t): print(t, end="")
-        case Completed(response=r): final = r
+        case TextDelta(text=t):
+            print(t, end="")
+        case Completed(response=r):
+            final = r
 ```
 
 You chose this over a generator that *returns* the response. That version is elegant, but a plain `for`

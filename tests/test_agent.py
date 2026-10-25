@@ -6,22 +6,32 @@ from miniharness.tools import Toolbox, default_tools
 
 
 def test_answers_without_tools():
-    provider = MockProvider([LLMResponse(Message(role="assistant", content="Hi!"), stop_reason="end")])
+    provider = MockProvider(
+        [LLMResponse(Message(role="assistant", content="Hi!"), stop_reason="end")]
+    )
 
     assert Agent(provider).run("Say hi") == "Hi!"
 
 
 def test_runs_tool_then_answers():
-    provider = MockProvider([
-        LLMResponse(
-            Message(
-                role="assistant",
-                tool_calls=[ToolCall(id="call_1", name="multiply", arguments={"a": 17, "b": 23})],
+    provider = MockProvider(
+        [
+            LLMResponse(
+                Message(
+                    role="assistant",
+                    tool_calls=[
+                        ToolCall(
+                            id="call_1", name="multiply", arguments={"a": 17, "b": 23}
+                        )
+                    ],
+                ),
+                stop_reason="tool_calls",
             ),
-            stop_reason="tool_calls",
-        ),
-        LLMResponse(Message(role="assistant", content="17 * 23 = 391"), stop_reason="end"),
-    ])
+            LLMResponse(
+                Message(role="assistant", content="17 * 23 = 391"), stop_reason="end"
+            ),
+        ]
+    )
     agent = Agent(provider)
 
     assert agent.run("What is 17 * 23?") == "17 * 23 = 391"
@@ -35,7 +45,10 @@ def test_runs_tool_then_answers():
 
 def test_stops_after_max_steps():
     looping = LLMResponse(
-        Message(role="assistant", tool_calls=[ToolCall(id="c", name="current_time", arguments={})]),
+        Message(
+            role="assistant",
+            tool_calls=[ToolCall(id="c", name="current_time", arguments={})],
+        ),
         stop_reason="tool_calls",
     )
     with pytest.raises(RuntimeError, match="2 steps"):
@@ -44,13 +57,20 @@ def test_stops_after_max_steps():
 
 def test_tool_calls_go_through_the_injected_toolbox():
     toolbox = Toolbox(default_tools())
-    provider = MockProvider([
-        LLMResponse(
-            Message(role="assistant", tool_calls=[ToolCall(id="c", name="add", arguments={"a": 1, "b": 2})]),
-            stop_reason="tool_calls",
-        ),
-        LLMResponse(Message(role="assistant", content="3"), stop_reason="end"),
-    ])
+    provider = MockProvider(
+        [
+            LLMResponse(
+                Message(
+                    role="assistant",
+                    tool_calls=[
+                        ToolCall(id="c", name="add", arguments={"a": 1, "b": 2})
+                    ],
+                ),
+                stop_reason="tool_calls",
+            ),
+            LLMResponse(Message(role="assistant", content="3"), stop_reason="end"),
+        ]
+    )
 
     Agent(provider, tools=toolbox).run("1+2?")
 

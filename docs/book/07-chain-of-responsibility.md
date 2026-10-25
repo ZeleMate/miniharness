@@ -22,12 +22,15 @@ tools through, asking a human about anything with side effects. Written as one `
 Toolbox, they'd be tangled together. As a chain, each rule is its own small object:
 
 ```python
-policy = PolicyChain([
-    DenyTools({"send_email"}),
-    MaxCalls("write_file", 5),
-    AllowReadOnly(),
-    AskBeforeSideEffects(),
-], approver=terminal_approver)
+policy = PolicyChain(
+    [
+        DenyTools({"send_email"}),
+        MaxCalls("write_file", 5),
+        AllowReadOnly(),
+        AskBeforeSideEffects(),
+    ],
+    approver=terminal_approver,
+)
 ```
 
 Each policy returns a decision or `None` (no opinion), and **the first decision wins**. You chose a plain

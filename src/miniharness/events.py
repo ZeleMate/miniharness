@@ -88,7 +88,15 @@ class RunFinished:
     depth: int = 0
 
 
-Event = Union[RunStarted, StateChanged, TokenStreamed, ModelCalled, ToolCalled, MessageRouted, RunFinished]
+Event = Union[
+    RunStarted,
+    StateChanged,
+    TokenStreamed,
+    ModelCalled,
+    ToolCalled,
+    MessageRouted,
+    RunFinished,
+]
 Handler = Callable[[Event], None]
 
 
@@ -143,4 +151,7 @@ class EventBus:
                 handler(event)
             except Exception as e:
                 self.errors.append((handler, event, e))
-                warnings.warn(f"Event handler {handler!r} failed on {type(event).__name__}: {e!r}", stacklevel=2)
+                warnings.warn(
+                    f"Event handler {handler!r} failed on {type(event).__name__}: {e!r}",
+                    stacklevel=2,
+                )

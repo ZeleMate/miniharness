@@ -27,21 +27,34 @@ class ToolboxView:
 
     @classmethod
     def read_only(cls, toolbox: Toolbox) -> "ToolboxView":
-        return cls(toolbox, [name for name, tool in toolbox.tools.items() if not tool.side_effects])
+        return cls(
+            toolbox,
+            [name for name, tool in toolbox.tools.items() if not tool.side_effects],
+        )
 
     @property
     def tools(self) -> Mapping[str, Tool]:
-        return {name: tool for name, tool in self.toolbox.tools.items() if name in self.allow}
+        return {
+            name: tool
+            for name, tool in self.toolbox.tools.items()
+            if name in self.allow
+        }
 
     def specs(self) -> dict[str, ToolSpec]:
-        return {name: spec for name, spec in self.toolbox.specs().items() if name in self.allow}
+        return {
+            name: spec
+            for name, spec in self.toolbox.specs().items()
+            if name in self.allow
+        }
 
     def execute(self, call: ToolCall) -> str:
         return self.execute_all([call])[0]
 
     def execute_all(self, calls: list[ToolCall]) -> list[str]:
         # Allowed calls go on in batches, so they can still run together (D221)
-        return execute_split(calls, lambda call: call.name not in self.allow, _hidden, self.toolbox)
+        return execute_split(
+            calls, lambda call: call.name not in self.allow, _hidden, self.toolbox
+        )
 
 
 def _hidden(call: ToolCall) -> str:

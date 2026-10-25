@@ -48,7 +48,9 @@ class ConsolePrinter:
                 self._print(f"{indent}{agent} started: {_shorten(task)}")
             case StateChanged(new=new):
                 self._print(f"{indent}[{new}]")
-            case ModelCalled(stop_reason=stop, tool_calls=n, usage=usage, duration_s=secs):
+            case ModelCalled(
+                stop_reason=stop, tool_calls=n, usage=usage, duration_s=secs
+            ):
                 what = f"{n} tool call(s)" if n else stop
                 self._print(f"{indent}model: {what}{_usage(usage)}, {secs:.1f}s")
             case ToolCalled(call=call, output=output, decision=decision):

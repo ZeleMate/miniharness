@@ -34,10 +34,12 @@ The registry became an ordinary class, and the built-ins register into one ordin
 ```python
 mine = default_registry.copy()
 
+
 @mine.register("echo")
 class EchoProvider(MockProvider): ...
 
-Harness("echo", registry=mine)      # the default registry is untouched
+
+Harness("echo", registry=mine)  # the default registry is untouched
 ```
 
 `create_provider()` and `@register_provider` still exist, now as one-line delegates to `default_registry`,

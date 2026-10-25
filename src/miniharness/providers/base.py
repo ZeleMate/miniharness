@@ -8,4 +8,6 @@ from miniharness.types import LLMResponse, Message, ToolSpec
 class Provider(Protocol):
     model: str
 
-    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse: ...
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse: ...

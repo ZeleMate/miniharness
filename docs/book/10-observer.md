@@ -21,7 +21,8 @@ You chose typed event objects delivered through a bus (D93), over a GoF observer
 class ToolCalled:
     call: ToolCall
     output: str
-    decision: Decision | None   # which policy allowed or denied it
+    decision: Decision | None  # which policy allowed or denied it
+
 
 bus = EventBus()
 bus.subscribe(ConsolePrinter())

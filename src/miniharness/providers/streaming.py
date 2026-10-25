@@ -7,7 +7,14 @@
 from typing import Iterable, Iterator
 
 from miniharness.providers.base import Provider
-from miniharness.types import Completed, LLMResponse, Message, StreamChunk, TextDelta, ToolSpec
+from miniharness.types import (
+    Completed,
+    LLMResponse,
+    Message,
+    StreamChunk,
+    TextDelta,
+    ToolSpec,
+)
 
 
 def as_stream(response: LLMResponse) -> Iterator[StreamChunk]:
@@ -20,7 +27,9 @@ def as_stream(response: LLMResponse) -> Iterator[StreamChunk]:
     yield Completed(response)
 
 
-def stream_from(provider: Provider, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+def stream_from(
+    provider: Provider, messages: list[Message], tools: dict[str, ToolSpec]
+) -> Iterator[StreamChunk]:
     """Stream from `provider` if it can, otherwise replay its `complete()` as a stream.
 
     A generator, so nothing is called until the first chunk is asked for.

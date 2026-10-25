@@ -65,14 +65,18 @@ def test_allow_all_is_an_empty_chain_that_allows():
 
 def test_ask_is_resolved_by_the_approver(write):
     asked = []
-    chain = PolicyChain([AskBeforeSideEffects()], approver=lambda c: asked.append(c) or True)
+    chain = PolicyChain(
+        [AskBeforeSideEffects()], approver=lambda c: asked.append(c) or True
+    )
 
     assert chain.decide(write_call(), write).verdict is Verdict.ALLOW
     assert asked[0].name == "write_file"
 
 
 def test_declined_ask_is_a_deny(write):
-    decision = PolicyChain([AskBeforeSideEffects()], approver=lambda c: False).decide(write_call(), write)
+    decision = PolicyChain([AskBeforeSideEffects()], approver=lambda c: False).decide(
+        write_call(), write
+    )
 
     assert decision.verdict is Verdict.DENY
     assert "declined" in decision.reason
@@ -86,7 +90,9 @@ def test_ask_without_an_approver_fails_closed(write):
 
 
 def test_approver_is_not_asked_when_an_earlier_policy_decides(write):
-    chain = PolicyChain([DenyTools({"write_file"}), AskBeforeSideEffects()], approver=pytest.fail)
+    chain = PolicyChain(
+        [DenyTools({"write_file"}), AskBeforeSideEffects()], approver=pytest.fail
+    )
 
     assert chain.decide(write_call(), write).verdict is Verdict.DENY
 
@@ -123,7 +129,10 @@ def test_toolbox_denies_side_effects_by_default(tmp_path):
 
     result = box.execute(write_call())
 
-    assert result == "Permission denied: write_file needs approval and no approver is available"
+    assert (
+        result
+        == "Permission denied: write_file needs approval and no approver is available"
+    )
     assert not (tmp_path / "a.txt").exists()
     assert box.history == []
     assert box.denied[0][1].policy == "AskBeforeSideEffects"

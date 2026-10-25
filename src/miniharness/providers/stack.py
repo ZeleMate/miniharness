@@ -16,7 +16,13 @@ from miniharness.providers.base import Provider
 from miniharness.providers.breaker import CircuitBreaker
 from miniharness.providers.proxies import lazy_provider
 from miniharness.providers.registry import ProviderRegistry, resolve
-from miniharness.providers.wrappers import BudgetGuard, DiskCache, FallbackChain, Retry, UsageTracker
+from miniharness.providers.wrappers import (
+    BudgetGuard,
+    DiskCache,
+    FallbackChain,
+    Retry,
+    UsageTracker,
+)
 
 
 @dataclass
@@ -49,12 +55,20 @@ def build_stack(
     base = providers.create(model) if isinstance(model, str) else model
     chain = None
     if fallback is not None:
-        backup = lazy_provider(fallback, registry=providers) if isinstance(fallback, str) else fallback
+        backup = (
+            lazy_provider(fallback, registry=providers)
+            if isinstance(fallback, str)
+            else fallback
+        )
         base = chain = FallbackChain([CircuitBreaker(base), backup])
     tracker = UsageTracker(base)  # innermost: sees every real call, failed ones too
     guarded = tracker if budget is None else BudgetGuard(tracker, limit_usd=budget)
-    provider: Provider = Retry(guarded, attempts=retries)  # outside the guard: each attempt is checked
+    provider: Provider = Retry(
+        guarded, attempts=retries
+    )  # outside the guard: each attempt is checked
     disk = None
     if cache is not None:
-        provider = disk = DiskCache(provider, cache)  # outermost: hits are free and skip the budget
+        provider = disk = DiskCache(
+            provider, cache
+        )  # outermost: hits are free and skip the budget
     return Stack(provider=provider, tracker=tracker, base=base, chain=chain, cache=disk)

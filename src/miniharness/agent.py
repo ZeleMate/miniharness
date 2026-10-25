@@ -41,7 +41,14 @@ import warnings
 from typing import Any, Callable, Iterator
 
 from miniharness.checkpoint import Checkpoint
-from miniharness.events import Event, EventBus, RunFinished, RunStarted, StateChanged, agent_scope
+from miniharness.events import (
+    Event,
+    EventBus,
+    RunFinished,
+    RunStarted,
+    StateChanged,
+    agent_scope,
+)
 from miniharness.lifecycle import AgentState, Done, Idle, Thinking, from_snapshot
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider, stream_from
@@ -65,10 +72,16 @@ class Agent:
         self.events = events if events is not None else EventBus()
         # Whoever builds an object wires it (D98): the default Toolbox is ours, so it
         # reports to our bus; an injected one is wired by whoever built it (D76)
-        self.tools = tools if tools is not None else Toolbox(default_tools(), events=self.events)
-        self.system_prompt = system_prompt if system_prompt is not None else default_prompt().build()
+        self.tools = (
+            tools if tools is not None else Toolbox(default_tools(), events=self.events)
+        )
+        self.system_prompt = (
+            system_prompt if system_prompt is not None else default_prompt().build()
+        )
         self.max_steps = max_steps
-        self.stream = stream  # think via provider.stream(), emitting TokenStreamed events
+        self.stream = (
+            stream  # think via provider.stream(), emitting TokenStreamed events
+        )
         self.messages: list[Message] = []
         self.state: AgentState = Idle()
         self.model_calls = 0
@@ -88,7 +101,9 @@ class Agent:
     def follow_up(self, text: str) -> AgentState:
         """Continue a finished run with a new user message (keeps the conversation)."""
         if not isinstance(self.state, Done):
-            raise RuntimeError(f"Can only follow up on a finished run, not one that is {self.state.name}")
+            raise RuntimeError(
+                f"Can only follow up on a finished run, not one that is {self.state.name}"
+            )
         with agent_scope(self.name):
             self.messages.append(Message(role="user", content=text))
             self.model_calls = 0  # max_steps applies per turn
@@ -117,7 +132,9 @@ class Agent:
                     except StopIteration as stop:
                         self._transition(stop.value)
                         if self.state.terminal:
-                            self.events.emit(RunFinished(self.state.name, self.state.answer))
+                            self.events.emit(
+                                RunFinished(self.state.name, self.state.answer)
+                            )
                         return
                 yield
         finally:
@@ -158,7 +175,9 @@ class Agent:
 
     def checkpoint(self) -> Checkpoint:
         mark = self.tools.mark() if hasattr(self.tools, "mark") else None
-        return Checkpoint.capture(self.messages, self.state.snapshot(), self.model_calls, mark)
+        return Checkpoint.capture(
+            self.messages, self.state.snapshot(), self.model_calls, mark
+        )
 
     def restore(self, checkpoint: Checkpoint, files: bool = True) -> None:
         """Put the agent back where the checkpoint was taken.
@@ -177,7 +196,10 @@ class Agent:
         mark = checkpoint.tool_mark
         if mark is None:
             return
-        if not hasattr(self.tools, "rewind_to") or getattr(self.tools, "id", None) != mark.toolbox_id:
+        if (
+            not hasattr(self.tools, "rewind_to")
+            or getattr(self.tools, "id", None) != mark.toolbox_id
+        ):
             warnings.warn(
                 "Checkpoint comes from another Toolbox (e.g. loaded from disk); file changes were not rewound",
                 stacklevel=3,
@@ -195,14 +217,25 @@ class Agent:
         fork its own workspace and undo history.
         """
         checkpoint = checkpoint if checkpoint is not None else self.checkpoint()
-        unknown = set(overrides) - {"provider", "tools", "system_prompt", "max_steps", "events", "name", "stream"}
+        unknown = set(overrides) - {
+            "provider",
+            "tools",
+            "system_prompt",
+            "max_steps",
+            "events",
+            "name",
+            "stream",
+        }
         if unknown:
             raise TypeError(f"Can't override {sorted(unknown)}")
         clone = copy.copy(self)  # same class: a fork of a subclass is that subclass
         for name, value in overrides.items():
             setattr(clone, name, value)
         if clone.tools is self.tools and hasattr(self.tools, "history"):
-            warnings.warn("Fork shares the original's Toolbox: same workspace and undo history", stacklevel=2)
+            warnings.warn(
+                "Fork shares the original's Toolbox: same workspace and undo history",
+                stacklevel=2,
+            )
         clone.restore(checkpoint, files=False)  # never rewind the original's files
         return clone
 
@@ -246,7 +279,9 @@ class Agent:
         outputs = execute_all(self.tools, tool_calls)
         return [
             Message(role="tool", content=output, tool_call_id=tc.id)
-            for tc, output in zip(tool_calls, outputs, strict=True)  # one output per call
+            for tc, output in zip(
+                tool_calls, outputs, strict=True
+            )  # one output per call
         ]
 
     def after_answer(self, response: LLMResponse) -> AgentState:

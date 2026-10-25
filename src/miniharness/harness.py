@@ -34,7 +34,16 @@ from miniharness.events import Event, EventBus, RunFinished, StateChanged
 from miniharness.observers import ConsolePrinter, JsonlTracer
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider, ProviderRegistry, UsageTracker, build_stack
-from miniharness.tools import AgentTool, Policy, Tool, Toolbox, ToolboxView, ToolCommand, default_policy, default_tools
+from miniharness.tools import (
+    AgentTool,
+    Policy,
+    Tool,
+    Toolbox,
+    ToolboxView,
+    ToolCommand,
+    default_policy,
+    default_tools,
+)
 from miniharness.types import ToolCall
 
 Approve = bool | Callable[[ToolCall], bool] | None
@@ -79,7 +88,9 @@ class Harness:
         - `agent_type`: `Agent` (plain tool loop), `PlannerAgent` or `ReviewerAgent`; helpers stay plain.
         - `registry`: where `model` and `fallback` specs are looked up (default: the built-ins).
         """
-        cache_dir = Path(".cache/llm") if cache is True else (Path(cache) if cache else None)
+        cache_dir = (
+            Path(".cache/llm") if cache is True else (Path(cache) if cache else None)
+        )
         self.workspace = Path(workspace) if workspace is not None else None
         if cache_dir is not None and self.workspace is not None:
             _check_cache_outside(cache_dir, self.workspace)
@@ -94,7 +105,9 @@ class Harness:
         self._console = ConsolePrinter() if console else None
         self._muted = False
         if self._console is not None:
-            self.events.subscribe(lambda event: None if self._muted else self._console(event))
+            self.events.subscribe(
+                lambda event: None if self._muted else self._console(event)
+            )
         if trace is not None:
             self.events.subscribe(JsonlTracer(trace))
 
@@ -162,7 +175,9 @@ class Harness:
         saved = self.saved_run
         if saved is None:
             raise RuntimeError("Nothing to resume: no unfinished run is saved")
-        self.agent.restore(saved, files=False)  # a new process: its Toolbox history is gone
+        self.agent.restore(
+            saved, files=False
+        )  # a new process: its Toolbox history is gone
         while not self.agent.done:
             self.agent.step()
         return self.agent.state.answer
@@ -173,7 +188,9 @@ class Harness:
             return None
         return Checkpoint.load(self.checkpoint_path)
 
-    def add_helper(self, name: str, description: str, instructions: Sequence[str] = ()) -> Agent:
+    def add_helper(
+        self, name: str, description: str, instructions: Sequence[str] = ()
+    ) -> Agent:
         """Add a read-only sub-agent the main agent can delegate to, as a tool (stage 12).
 
         It shares the provider (and so the budget), the event bus and the

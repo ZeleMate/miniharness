@@ -40,14 +40,20 @@ class LazyProvider:
             return self._model
         return self.materialize().model
 
-    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse:
         return self.materialize().complete(messages, tools)
 
-    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+    def stream(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> Iterator[StreamChunk]:
         yield from stream_from(self.materialize(), messages, tools)
 
 
-def lazy_provider(spec: str, *, registry: ProviderRegistry | None = None, **kwargs: Any) -> LazyProvider:
+def lazy_provider(
+    spec: str, *, registry: ProviderRegistry | None = None, **kwargs: Any
+) -> LazyProvider:
     """`registry.create(spec)`, deferred until first use.
 
     The registry is chosen now, not at first use (D205): the spec means what it

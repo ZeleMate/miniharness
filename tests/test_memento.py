@@ -9,12 +9,27 @@ from miniharness.checkpoint import Checkpoint
 from miniharness.errors import BudgetExceeded
 from miniharness.lifecycle import ActingOnTools, Done, Stopped, Thinking, from_snapshot
 from miniharness.providers import MockProvider
-from miniharness.tools import IrreversibleError, PolicyChain, Tool, Toolbox, ToolboxView, ToolResult, default_tools
+from miniharness.tools import (
+    IrreversibleError,
+    PolicyChain,
+    Tool,
+    Toolbox,
+    ToolboxView,
+    ToolResult,
+    default_tools,
+)
 
 
 def tool_turn(name="add", **arguments):
     return LLMResponse(
-        Message(role="assistant", tool_calls=[ToolCall(id=f"c-{name}", name=name, arguments=arguments or {"a": 1, "b": 2})]),
+        Message(
+            role="assistant",
+            tool_calls=[
+                ToolCall(
+                    id=f"c-{name}", name=name, arguments=arguments or {"a": 1, "b": 2}
+                )
+            ],
+        ),
         "tool_calls",
     )
 
@@ -92,7 +107,10 @@ def test_resume_mid_run_with_pending_tool_calls():
 
 
 def test_restore_undoes_file_changes_made_after_the_checkpoint(toolbox, tmp_path):
-    agent = Agent(MockProvider([write("a.txt", "one"), write("b.txt", "two"), answer("done")]), tools=toolbox)
+    agent = Agent(
+        MockProvider([write("a.txt", "one"), write("b.txt", "two"), answer("done")]),
+        tools=toolbox,
+    )
     agent.start("write files")
     agent.step()  # model asks for a.txt
     agent.step()  # a.txt written
@@ -132,7 +150,9 @@ class SendEmail(Tool):
 def test_an_irreversible_action_blocks_restore_entirely(tmp_path):
     from miniharness.tools import WriteFile
 
-    toolbox = Toolbox([WriteFile(tmp_path), SendEmail()], policy=PolicyChain.allow_all())
+    toolbox = Toolbox(
+        [WriteFile(tmp_path), SendEmail()], policy=PolicyChain.allow_all()
+    )
     script = [write("a.txt", "x"), tool_turn("send_email", to="boss"), answer("done")]
     agent = Agent(MockProvider(script), tools=toolbox)
     agent.start("w")
@@ -156,7 +176,9 @@ def test_a_view_cannot_rewind_files(toolbox, tmp_path):
     assert agent.checkpoint().tool_mark is None
 
 
-def test_a_checkpoint_from_another_toolbox_restores_conversation_only(toolbox, tmp_path):
+def test_a_checkpoint_from_another_toolbox_restores_conversation_only(
+    toolbox, tmp_path
+):
     agent = Agent(MockProvider([answer("x")]), tools=toolbox)
     agent.start("t")
     cp = agent.checkpoint()
@@ -180,7 +202,10 @@ def test_save_and_load_round_trip(tmp_path, toolbox):
     agent.checkpoint().save(path)
     loaded = Checkpoint.load(path)
 
-    assert loaded.state == {"name": "acting_on_tools", "calls": [{"id": "c-add", "name": "add", "arguments": {"a": 1, "b": 2}}]}
+    assert loaded.state == {
+        "name": "acting_on_tools",
+        "calls": [{"id": "c-add", "name": "add", "arguments": {"a": 1, "b": 2}}],
+    }
     assert [m.role for m in loaded.messages] == ["system", "user", "assistant"]
     assert loaded.tool_mark == agent.checkpoint().tool_mark
     assert not path.with_suffix(".json.tmp").exists()
@@ -191,8 +216,15 @@ def test_anthropic_raw_blocks_are_saved_as_plain_json(tmp_path):
         TextBlock(type="text", text="Checking."),
         ToolUseBlock(type="tool_use", id="toolu_1", name="add", input={"a": 1, "b": 2}),
     ]
-    msg = Message(role="assistant", content="Checking.", tool_calls=[ToolCall("toolu_1", "add", {"a": 1, "b": 2})], raw=raw)
-    cp = Checkpoint.capture([Message(role="user", content="hi"), msg], {"name": "thinking"}, 1, None)
+    msg = Message(
+        role="assistant",
+        content="Checking.",
+        tool_calls=[ToolCall("toolu_1", "add", {"a": 1, "b": 2})],
+        raw=raw,
+    )
+    cp = Checkpoint.capture(
+        [Message(role="user", content="hi"), msg], {"name": "thinking"}, 1, None
+    )
     path = tmp_path / "run.json"
 
     cp.save(path)
@@ -215,10 +247,15 @@ def test_a_stopped_run_survives_save_and_load(tmp_path):
 
     agent.checkpoint().save(path)
     fresh = Agent(MockProvider())
-    fresh.restore(Checkpoint.load(path), files=False)  # another process: no history to rewind (D111)
+    fresh.restore(
+        Checkpoint.load(path), files=False
+    )  # another process: no history to rewind (D111)
 
     assert isinstance(fresh.state, Stopped)
-    assert (fresh.state.reason, fresh.state.answer) == ("budget", "[stopped: budget] over")
+    assert (fresh.state.reason, fresh.state.answer) == (
+        "budget",
+        "[stopped: budget] over",
+    )
 
 
 def test_an_unknown_state_is_rejected():
@@ -242,7 +279,9 @@ def test_fork_continues_independently_from_the_checkpoint():
     agent.start("task")
     cp = agent.checkpoint()
 
-    fork = agent.fork(cp, provider=MockProvider([answer("forked")]), tools=Toolbox(default_tools()))
+    fork = agent.fork(
+        cp, provider=MockProvider([answer("forked")]), tools=Toolbox(default_tools())
+    )
 
     while not fork.done:
         fork.step()
@@ -260,7 +299,9 @@ def test_fork_keeps_the_subclass():
     agent = Shouty(MockProvider([]))
     agent.start("x")
 
-    fork = agent.fork(provider=MockProvider([answer("hi")]), tools=Toolbox(default_tools()))
+    fork = agent.fork(
+        provider=MockProvider([answer("hi")]), tools=Toolbox(default_tools())
+    )
     while not fork.done:
         fork.step()
 
