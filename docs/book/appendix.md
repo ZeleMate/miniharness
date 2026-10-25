@@ -55,6 +55,9 @@ behind Visitor.
 
 **Fail closed.** When unsure, refuse. The opposite, fail open, allows by default.
 
+**GIL (global interpreter lock).** Lets only one thread run Python code at a time. A thread waiting on a
+file or the network releases it, so threads still speed up I/O-bound work, like most tools.
+
 **Information hiding.** Not revealing what exists. Hidden tools return the same error as missing ones.
 
 **Interface segregation.** Depend on the smallest interface you actually use. The Agent needs two methods

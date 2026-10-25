@@ -31,7 +31,7 @@ forever (D14). Learning when *not* to apply a pattern turned out to be one of th
 **4. Run it for real.** Every stage ended with a live run against a real model through OpenRouter. The
 tests confirmed the behavior we imagined; the live runs revealed the behavior we had actually built. A
 surprising number of the best design decisions in this book came from a model doing something nobody
-expected. Chapter 19 lists them.
+expected. The epilogue lists them.
 
 ## Pair mode, and the decision log
 

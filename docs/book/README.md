@@ -46,8 +46,9 @@ notes belong in [`PATTERNS.md`](../../PATTERNS.md), under each pattern's "Your n
 16. [One front door](16-facade.md) (Facade)
 17. [Two hierarchies that grow apart](17-bridge.md) (Bridge)
 18. [The last global](18-singleton-to-di.md) (Singleton, and dependency injection instead)
+19. [Several things at once](19-concurrent-tools.md) (no new pattern: concurrency on top of Command)
 
-**[Epilogue: what it all adds up to](19-epilogue.md)**
+**[Epilogue: what it all adds up to](20-epilogue.md)**
 
 **[Appendix: cheat sheet and glossary](appendix.md)**
 

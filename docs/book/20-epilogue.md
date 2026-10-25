@@ -1,6 +1,6 @@
 # Epilogue: what it all adds up to
 
-Eighteen stages, 214 decisions, 321 tests. Looking back, the individual patterns matter less than the ideas
+Nineteen stages, 223 decisions, 341 tests. Looking back, the individual patterns matter less than the ideas
 that kept coming back. This chapter collects those ideas, the bugs that taught the most, the environment
 problems that cost real time, and the questions the project deliberately left open.
 
@@ -44,7 +44,7 @@ full class form only when it pays.
 
 **7. Small interfaces make everything swappable.** `Provider` needs one method; `ToolSet` needs two. That's
 why mocks, wrappers, proxies, views and team tools could stand in for the real thing everywhere, and why
-321 tests run offline in about a second.
+341 tests run offline in about a second.
 
 ## The bugs the tests missed
 
@@ -126,10 +126,9 @@ errors (D101).
 
 Three directions would each teach something new:
 
-1. **Parallel sub-agents (D216).** Read-only *leaf* tools already run together (`Toolbox(max_workers=...)`,
-   D215-D223, built after this book was written; the first step taught the ContextVar trap of D220). Letting
-   sub-agents overlap is where the earlier decisions really break: trace pairing (D148), budget checks,
-   the lazy proxy and the breaker. It's the best possible test of how much a design depends on an
+1. **Parallel sub-agents (D216).** Read-only *leaf* tools already run together (chapter 19, which also
+   taught the ContextVar trap of D220). Letting sub-agents overlap is where the earlier decisions really
+   break: trace pairing (D148), budget checks, the lazy proxy and the breaker. It's the best possible test of how much a design depends on an
    assumption nobody wrote down.
 2. **Asynchronous approval (D91, D118).** Add an `AwaitingApproval` state and an approver that can say
    "later". It combines State, Memento and Chain of Responsibility into a feature real harnesses need.
