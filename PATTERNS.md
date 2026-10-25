@@ -424,3 +424,59 @@ One entry per pattern, written when you apply it. Template:
   ReviewerAgent)`: does multiple inheritance compose the two hooks, and when would composition (D189)
   have been better?
 - **Your notes:**
+
+---
+
+## Singleton → dependency injection (bonus stage)
+
+- **Problem:** the last piece of hidden global state was the provider registry, a module-level
+  `_REGISTRY` dict that `@register_provider` filled at import time and `create_provider` read
+  (D17). Every caller reached *out* for it, so nothing could hand them a different one. A test that
+  registered a provider had to `monkeypatch` the module to stop it leaking into every later test,
+  the same pain the `MOCK_RESPONSES` (stage 2) and `TOOLS` (stage 5) globals caused before they went.
+- **Shape:** `ProviderRegistry` is an ordinary class (`add`, `register` decorator, `create`, `names`,
+  `copy`). The built-ins register into one ordinary instance, `default_registry`, and
+  `create_provider`/`register_provider` are one-line delegates to it, so the convenient API didn't
+  change. Everything that turns a spec into a provider takes `registry=`: `build_stack`,
+  `lazy_provider`, `Harness`. A test copies the default, registers into the copy, and passes it in:
+  no monkeypatch, no cleanup. `tests/test_singleton.py` keeps a textbook `__new__` Singleton as a
+  runnable specimen, with the same scenarios written both ways.
+- **Singleton vs DI:** a Singleton answers "how do I get *the* registry?" with "ask the class, it
+  always returns the same one". DI answers "you don't get it, you're *given* one". The Singleton's
+  costs are all visible in the specimen: hidden dependencies (nothing in a signature says it needs a
+  registry), shared mutable state (a "fresh" instance carries everyone's changes), order-dependent
+  tests and a reset fixture on every test, and no way to have two (one test's registry vs another's,
+  one harness's vs another's). The honest caveat: `default_registry` is still a global object. What
+  changed is the *direction of the dependency*: the global used to be the only option, now it's just
+  the default argument, and every constructor that needs a registry says so.
+- **Singleton vs ContextVar:** `events.agent_scope` is module-level too, and it stays. A ContextVar
+  holds *facts about the current execution* (which agent is running, how deep), with a separate
+  value per thread or asyncio task, set and reset by a `with`. It's not configuration anyone would
+  want to swap, so there's nothing to inject. Rule of thumb: inject what an object needs to do its
+  job; use a ContextVar for "where am I in the call stack" (request ids, trace spans, the running
+  agent). Using a ContextVar for the registry (`with use_registry(r):`) was rejected: the dependency
+  would be invisible again, only scoped (D203, D210).
+- **The same rule, applied to D98:** *whoever creates an object wires it.* `Agent(provider)` builds its
+  default Toolbox itself, so it now gives it its own event bus; until this stage, `ToolCalled` was
+  silently lost on exactly that shortest path. A Toolbox you pass in is yours to wire: the Agent
+  doesn't reach into objects it was handed (D76, D204).
+- **Live lesson:** an alias that exists in only one registry (`cheap` → OpenRouter with a default
+  model, a lambda registered in three lines) ran a tool-using task through `Harness("cheap",
+  registry=mine)`, with a lazy `cheap:qwen/...` fallback that was never built; `Harness("cheap")` without
+  it failed at startup, and the default registry was unchanged afterwards. And a plain `Agent` now
+  reports `ToolCalled(multiply → 399)` without any manual wiring.
+- **Where Python dissolves the pattern:** a module *is* a singleton (imported once, cached in
+  `sys.modules`), so the Pythonic "Singleton" is a module-level object, which is exactly what
+  `_REGISTRY` was. That's why the `__new__` class form is rare in Python code, and why removing the
+  pattern here meant changing who *reaches for* the object, not deleting a class.
+- **Harness connection:** frameworks keep the global for convenience and inject for control.
+  pydantic-ai and LangChain's `init_chat_model` build models from `"provider:model"` strings via a
+  built-in lookup, but every agent also accepts a ready model object. The OpenAI Agents SDK has
+  `set_default_openai_client()` (a global default) next to a per-agent `model=` and a per-run
+  `RunConfig(model_provider=...)` (injection). `default_registry` + `registry=` is the same split.
+- **Try it:** write a test that runs two `Harness` objects side by side, each with its own registry
+  where `"main"` means a different scripted provider, and check that each answers from its own. Then
+  try the same with only the default registry: what would you have to monkeypatch, and could the two
+  harnesses even coexist? Finally, find a place in your own agent code where something reaches for a
+  global client or config, and write down who should create it and pass it in.
+- **Your notes:**

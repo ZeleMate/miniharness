@@ -198,3 +198,24 @@ def test_jsonl_tracer_writes_one_parseable_line_per_event(tmp_path):
     assert lines[0]["event"] == "RunStarted" and lines[0]["task"] == "1+2?"
     tool = next(line for line in lines if line["event"] == "ToolCalled")
     assert tool["call"]["name"] == "add" and tool["decision"]["verdict"] == "allow"
+
+
+# --- D98: whoever builds an object wires it (Singleton → DI) ------------------------------
+
+
+def test_the_default_toolbox_reports_to_the_agents_bus():
+    agent = Agent(MockProvider([tool_turn(), answer()]))
+    events = []
+    agent.events.subscribe(events.append)
+
+    agent.run("1+2?")
+
+    assert [type(e) for e in events if isinstance(e, ToolCalled)] == [ToolCalled]
+    assert agent.tools.events is agent.events
+
+
+def test_an_injected_toolbox_is_left_as_its_builder_wired_it():
+    toolbox = Toolbox(default_tools())  # no bus: the caller's choice, not the agent's to fix (D76)
+    agent = Agent(MockProvider([answer()]), tools=toolbox)
+
+    assert toolbox.events is None and agent.events is not None

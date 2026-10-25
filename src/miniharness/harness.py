@@ -17,6 +17,10 @@ so the advanced case starts from the facade instead of from scratch.
 Bonus stage (Bridge): `agent_type=` picks the agent type (the abstraction)
 independently of `model` (the implementation): `Harness("anthropic",
 agent_type=PlannerAgent)`. The class is the factory, so no registry is needed.
+
+Bonus stage (Singleton → dependency injection): `registry=` injects the
+`ProviderRegistry` that `model` and `fallback` specs are looked up in, so a
+custom provider needs no global registration: `Harness("echo", registry=mine)`.
 """
 
 import os
@@ -29,7 +33,7 @@ from miniharness.checkpoint import Checkpoint
 from miniharness.events import Event, EventBus, RunFinished, StateChanged
 from miniharness.observers import ConsolePrinter, JsonlTracer
 from miniharness.prompts import default_prompt
-from miniharness.providers import Provider, UsageTracker, build_stack
+from miniharness.providers import Provider, ProviderRegistry, UsageTracker, build_stack
 from miniharness.tools import AgentTool, Policy, Tool, Toolbox, ToolboxView, ToolCommand, default_policy, default_tools
 from miniharness.types import ToolCall
 
@@ -58,6 +62,7 @@ class Harness:
         stream: bool = False,
         max_steps: int = 10,
         agent_type: type[Agent] = Agent,
+        registry: ProviderRegistry | None = None,
     ):
         """Every argument has a safe default; only `model` is usually worth setting.
 
@@ -70,12 +75,14 @@ class Harness:
         - `console` / `trace`: print events live / append them to a JSONL file.
         - `checkpoint`: autosave the run here after every step; see `resume()`.
         - `agent_type`: `Agent` (plain tool loop), `PlannerAgent` or `ReviewerAgent`; helpers stay plain.
+        - `registry`: where `model` and `fallback` specs are looked up (default: the built-ins).
         """
         self.stack = build_stack(
             model,
             budget=budget,
             cache=Path(".cache/llm") if cache is True else (cache or None),
             fallback=fallback,
+            registry=registry,
         )
         self.events = events if events is not None else EventBus()
         self._console = ConsolePrinter() if console else None

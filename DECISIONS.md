@@ -149,7 +149,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   Both are more machinery than this project needs.
 
 ### D17. The registry is a module-level global
-**Status:** open (made during implementation)
+**Status:** superseded by D203 (bonus stage: Singleton → dependency injection)
 - **Smell:** it's a mutable singleton. Tests that register providers must
   `monkeypatch` it to avoid leaking state into other tests, the same pain the old
   `MOCK_RESPONSES` caused.
@@ -163,7 +163,8 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 - **Why:** fail loudly. A silent overwrite from a typo'd name or a double import
   would be very hard to debug.
 - **Cost:** you can't deliberately replace a built-in provider (e.g. a patched
-  OpenRouter) without adding an explicit `replace=True` option.
+  OpenRouter) without adding an explicit `replace=True` option. Eased by D209: inject
+  a different registry instead.
 
 ### D19. `create_provider` passes `**kwargs` through untyped
 **Status:** accepted (made during implementation)
@@ -711,7 +712,7 @@ from `agent.messages` afterwards.
   If the emit lived inside the hook, every override would have to remember `super()`.
 
 ### D98. The Agent always has a bus; it doesn't share it with the Toolbox automatically
-**Status:** open for `Agent`; settled for the `Harness` path by D177 (stage 16)
+**Status:** accepted: settled for the `Harness` path by D177 (stage 16) and for a hand-built `Agent` by D204 (bonus stage)
 - `Agent(..., events=None)` creates an empty bus, so `agent.events.subscribe(...)` always
   works. The Toolbox's bus is optional, and the caller must pass the same one to both.
 - **Risk:** forget to pass it to the Toolbox, and `ToolCalled` events silently never arrive.
@@ -1544,3 +1545,130 @@ from `agent.messages` afterwards.
   planning run (no `tools` on the first request, alternating roles) is covered by fake-client tests.
 - **D17 (global provider registry) and D98 (bus wiring for a hand-built `Agent`):** untouched; they're
   the Singleton → dependency injection stage.
+
+---
+
+## Bonus stage: Singleton → dependency injection
+
+### D202. The textbook Singleton lives in a test file as a specimen; the library never ships it (your call)
+**Status:** accepted
+- **Options:** a specimen in `tests/test_singleton.py` next to the DI version · straight to DI with the
+  Singleton only as a snippet in `PATTERNS.md` · two commits (a real `__new__` Singleton first, then
+  the refactor).
+- **Why:** "naive first" says feel the smell before the fix, but the smell had already been felt for
+  real (D17: tests monkeypatching `_REGISTRY`). Shipping a Singleton only to remove it in the next
+  commit would be ceremony. The specimen *runs*: it shows one instance, a "fresh" object that isn't
+  fresh, state leaking from one test into the next, the reset fixture every test needs, and a
+  dependency that no signature mentions. The DI tests sit right below it, written as the same scenarios.
+- **Lesson inside the specimen:** `__init__` still runs on every `SingletonRegistry()` call, so a
+  Singleton's `__init__` must not initialize anything (or it wipes the shared state each time).
+- **Revisit when:** never in the library. A real need for "exactly one" (one process-wide connection
+  pool, one rate limiter shared by every provider) would still be one *instance* created at startup
+  and injected, not a class that enforces it.
+
+### D203. A plain `ProviderRegistry` class, one default instance, and `registry=` wherever specs are resolved (your call)
+**Status:** accepted; supersedes D17
+- **Options:** default instance + injectable · no global at all (`builtin_registry()` builds a fresh
+  one, no decorator) · an ambient `ContextVar` (`with use_registry(r):`).
+- **Shape:** `ProviderRegistry` has `add()`, `register()` (the decorator form), `create()`, `names()`,
+  `copy()` and `in`. The built-ins register into `default_registry`. `create_provider`,
+  `register_provider` and `available_providers` are now one-line delegates to it, so no caller
+  changed. `build_stack(registry=)`, `lazy_provider(registry=)` and `Harness(registry=)` take another
+  one. Every test that monkeypatched the registry now builds or copies its own (no `monkeypatch` left
+  for it in the suite).
+- **Honest part:** `default_registry` is still a module-level, mutable object. What changed is the
+  *dependency direction*: before, every caller reached for the global and couldn't be given anything
+  else. Now the global is just the default argument. Singleton is "one instance, globally reachable,
+  *enforced*"; this is "one instance by convention, passed in when it matters". Registering into the
+  default from a test would still leak, and nothing forbids it; `copy()` makes it unnecessary.
+- **Why not "no global":** it reverses D12 (self-registration) and makes `create_provider` build a
+  registry on every call, for purity no caller asked for.
+- **Why not a ContextVar:** it hides the dependency again, just scoped. It's the right tool for
+  *per-execution* facts (D210), not for configuration that a constructor could take.
+- **Revisit when:** providers come from plugins (entry points, D16). A plugin loader would then
+  return a registry instead of mutating the default.
+
+### D204. An `Agent` wires the Toolbox it builds; an injected Toolbox stays as its builder wired it (your call)
+**Status:** accepted; settles D98
+- **Options:** wire what it builds · also fill in a missing bus on an injected Toolbox · leave open.
+- **Rule:** *whoever creates an object wires it.* With `tools=None` the Agent creates the default
+  Toolbox itself, so it passes its own bus, and `ToolCalled` arrives (before, it was silently lost on
+  exactly the shortest path, `Agent(provider)`). An injected Toolbox was built by the caller, who is
+  the composition root for it. Filling in its bus would mutate an object the Agent was only handed
+  (against D76) and pick a winner when two agents share one Toolbox.
+- **Live:** `Agent(create_provider("openrouter:deepseek/deepseek-chat")).run("What is 19 * 21?")` now
+  reports `ToolCalled(multiply → 399)` on `agent.events`.
+- **Edge:** `agent.fork(events=other_bus)` shares the original's default Toolbox (and warns, D107), so
+  the fork's tool calls still report to the *original's* bus. Pass `tools=` too, as the warning says.
+- **Revisit when:** someone hand-wires a Toolbox, forgets the bus and loses events: then a warning
+  for an injected Toolbox without a bus is the next step, not auto-wiring.
+
+### D205. `registry=None` means the default, resolved when the call is made; `lazy_provider` resolves at creation
+**Status:** accepted (made during implementation)
+- `resolve(registry)` turns `None` into `default_registry` inside the function, instead of
+  `registry=default_registry` as the parameter default. Same result today; the `None` form is the
+  Python convention for mutable defaults and keeps signatures from importing an object.
+- `lazy_provider` picks its registry when the proxy is *created*, not at first use: the spec means
+  what it meant where it was written. A late lookup would make "which provider is this?" depend on
+  what happened between construction and the first call, the kind of action at a distance this stage
+  removes. `build_stack` resolves once and uses the same registry for `model` and `fallback`.
+- **Cost:** a registry copied after the lazy provider was made isn't seen by it. That's the point.
+
+### D206. `@register_provider` targets only the default; another registry uses its own `@mine.register(...)`
+**Status:** accepted (made during implementation)
+- **Options:** `register_provider(name, registry=None)` · the method on the instance.
+- **Why:** one obvious spelling per target. The decorator on the instance reads as what it does
+  (`@mine.register("echo")`), and the module-level function stays the import-time convenience for
+  the built-ins (D12, D16).
+
+### D207. `copy()` is a shallow snapshot, not a parent chain
+**Status:** accepted (made during implementation)
+- **Options:** `copy()` (independent dict of the same factories) · a child registry that falls back
+  to a parent (`ChainMap`-style) · subclassing.
+- **Why:** both sides stay independent: registering in the copy never reaches the default, and
+  registering in the default after the copy never reaches the copy (tested both ways). A parent
+  chain would leak the second direction and make lookups depend on the parent's later state.
+- **Revisit when:** providers get registered *after* applications have taken copies (lazy plugin
+  loading). Then a chain, or copying later, would be needed.
+
+### D208. A factory is any callable, not only a provider class
+**Status:** accepted (made during implementation)
+- `ProviderRegistry({"scripted": lambda model="s": MockProvider([...], model=model)})` works, and the
+  live check registered an alias, `cheap` → OpenRouter with a default model, in three lines. Tests use
+  it to give a name-built provider scripted responses, which also works around D20 (a factory-built
+  mock has no script) without changing `MockProvider`.
+- **Cost:** D19 is unchanged (kwargs untyped), and a lambda's default `model` is invisible to `names()`.
+
+### D209. D18 stays (duplicates raise); deliberate replacement is now "use a different registry"
+**Status:** accepted (made during implementation); eases D18's cost
+- D18's cost was "you can't replace a built-in without `replace=True`". With injection you don't
+  mutate the shared registry at all: build `ProviderRegistry({"openrouter": PatchedOpenRouter, ...})`
+  and pass it. No `remove()` or `replace=` was added; a registry is only ever added to.
+
+### D210. The `agent_scope` ContextVar stays: per-execution state, not a singleton
+**Status:** notes
+- `events._scope` is module-level too, but it holds *where execution currently is* (which agent,
+  how deep), not shared configuration. Each thread and asyncio task sees its own value, `with`
+  resets it on exit, and nothing can configure it from outside, so there's nothing to inject. The
+  alternative, passing `(agent, depth)` through every tool call, would thread an execution detail
+  through tools that don't care (stage 12's reason for it).
+- **Rule of thumb:** inject *what an object needs to do its job* (registry, provider, bus, tools).
+  Use a ContextVar for *facts about the current call stack* (who is running, a request id, a trace
+  span), the way `logging`, OpenTelemetry's current span and `decimal`'s context do.
+- **Remaining module-level state, audited:** `PRICES_PER_MTOK`, `_HEADINGS`, `_STOP_REASONS` and
+  `_NUMBER_PAIR` are constant tables (mutable dicts by type, never mutated; D52 already tracks the
+  prices). `os.environ` is read by provider constructors for API keys: ambient config, but already
+  bypassable by injecting `client=` (D5). The disk cache is external state chosen by an injected path.
+  No other singleton remains.
+
+### D211. How this stage touches the open decisions
+**Status:** notes
+- **D17:** superseded by D203. **D98:** settled by D204 (and D177 for the facade). **D18:** eased by
+  D209. **D12/D16:** unchanged; the built-ins still self-register at import, into the default.
+- **Unverified live:** Anthropic (the key in `.env` returns 401). Nothing in this stage is
+  provider-specific: the registry hands Anthropic's class the same kwargs as before, covered by
+  `test_kwargs_pass_through_to_the_constructor`.
+- **Live (openrouter / deepseek-chat):** the default path (`Harness("openrouter:...")`, $0.0001); an
+  injected copy with a `cheap` alias plus a `cheap:qwen/qwen3-coder` fallback that stayed lazy (3
+  calls, $0.00068, answer 395); `Harness("cheap")` *without* `registry=` failing at startup with
+  "Unknown provider 'cheap'"; and the default registry unchanged afterwards.

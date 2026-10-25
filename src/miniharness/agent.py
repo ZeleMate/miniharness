@@ -27,6 +27,10 @@ Bonus stage (Bridge): `Agent` is the abstraction, `Provider` the implementor.
 Agent *types* (agent_types.py) are refined abstractions: they reshape the
 loop with the `first_state()` and `after_answer()` hooks and reach the model
 only through the provider, so any agent type runs on any provider.
+
+Bonus stage (Singleton → dependency injection): every collaborator is passed
+in, and the one the agent builds itself, the default Toolbox, it also wires to
+its own event bus.
 """
 
 import copy
@@ -55,11 +59,13 @@ class Agent:
     ):
         self.name = name  # tags this agent's events; sub-agents use their tool name
         self.provider = provider
-        self.tools = tools if tools is not None else Toolbox(default_tools())
+        self.events = events if events is not None else EventBus()
+        # Whoever builds an object wires it (D98): the default Toolbox is ours, so it
+        # reports to our bus; an injected one is wired by whoever built it (D76)
+        self.tools = tools if tools is not None else Toolbox(default_tools(), events=self.events)
         self.system_prompt = system_prompt if system_prompt is not None else default_prompt().build()
         self.max_steps = max_steps
         self.stream = stream  # think via provider.stream(), emitting TokenStreamed events
-        self.events = events if events is not None else EventBus()
         self.messages: list[Message] = []
         self.state: AgentState = Idle()
         self.model_calls = 0

@@ -13,9 +13,12 @@ from miniharness.providers import (
     FallbackChain,
     LazyProvider,
     MockProvider,
+    ProviderRegistry,
     Retry,
     UsageTracker,
     build_stack,
+    default_registry,
+    lazy_provider,
 )
 from miniharness.tools import Add, MaxCalls, ToolboxView
 from miniharness.types import Usage
@@ -311,3 +314,39 @@ def test_a_helper_is_visible_to_a_read_only_harness(tmp_path):
     h.add_helper("researcher", "Reads files.")
 
     assert "researcher" in h.agent.tools.specs()
+
+
+# --- registry=: providers by name without the global registry (Singleton → DI) ------------
+
+
+def scripted_registry(*script):
+    """A registry whose "scripted" provider replays `script`, built fresh for each test."""
+    return ProviderRegistry({"scripted": lambda model="scripted": MockProvider(list(script), model=model)})
+
+
+def test_harness_looks_up_specs_in_an_injected_registry():
+    h = Harness("scripted:v1", registry=scripted_registry(answer("hi")), console=False)
+
+    assert h.run("hello") == "hi"
+    assert h.provider.model == "v1"
+    assert "scripted" not in default_registry
+
+
+def test_the_fallback_spec_uses_the_same_injected_registry():
+    stack = build_stack(MockProvider(), fallback="scripted:backup", registry=scripted_registry())
+
+    backup = stack.chain.providers[1]
+    assert isinstance(backup, LazyProvider) and not backup.materialized  # still lazy (D69)
+    assert backup.materialize().model == "backup"
+
+
+def test_a_spec_unknown_to_the_injected_registry_fails_at_startup():
+    with pytest.raises(ValueError, match="Unknown provider 'openrouter'. Available: scripted"):
+        Harness("openrouter", registry=scripted_registry(), console=False)
+
+
+def test_lazy_provider_builds_from_the_injected_registry_on_first_use():
+    lazy = lazy_provider("scripted", registry=scripted_registry(answer("ok")))
+
+    assert not lazy.materialized
+    assert lazy.complete([Message(role="user", content="hi")], {}).message.content == "ok"

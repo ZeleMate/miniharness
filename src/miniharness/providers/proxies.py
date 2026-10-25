@@ -7,7 +7,7 @@ while a proxy decides whether, when, or where the real object is reached.
 from typing import Any, Callable, Iterator
 
 from miniharness.providers.base import Provider
-from miniharness.providers.registry import create_provider
+from miniharness.providers.registry import ProviderRegistry, resolve
 from miniharness.providers.streaming import stream_from
 from miniharness.types import LLMResponse, Message, StreamChunk, ToolSpec
 
@@ -47,7 +47,12 @@ class LazyProvider:
         yield from stream_from(self.materialize(), messages, tools)
 
 
-def lazy_provider(spec: str, **kwargs: Any) -> LazyProvider:
-    """`create_provider`, deferred until first use."""
+def lazy_provider(spec: str, *, registry: ProviderRegistry | None = None, **kwargs: Any) -> LazyProvider:
+    """`registry.create(spec)`, deferred until first use.
+
+    The registry is chosen now, not at first use (D205): the spec means what it
+    meant when the caller wrote it.
+    """
     _, _, model = spec.partition(":")
-    return LazyProvider(lambda: create_provider(spec, **kwargs), model=model or None)
+    providers = resolve(registry)
+    return LazyProvider(lambda: providers.create(spec, **kwargs), model=model or None)

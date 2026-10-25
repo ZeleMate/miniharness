@@ -46,6 +46,12 @@ h.rewind()          # undo the file changes
 # The agent type and the provider vary independently (Bridge):
 from miniharness import PlannerAgent
 Harness("openrouter", agent_type=PlannerAgent).run("What is (17 * 23) + 4?")
+
+# Your own providers go in your own registry; the built-in one stays untouched:
+from miniharness.providers import OpenRouterProvider, default_registry
+mine = default_registry.copy()
+mine.add("cheap", lambda model="deepseek/deepseek-chat", **kw: OpenRouterProvider(model=model, **kw))
+Harness("cheap", registry=mine).run("Hi")
 ```
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
@@ -54,13 +60,13 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 
 | File | What it is |
 |---|---|
-| `src/miniharness/harness.py` | `Harness`: one object that builds and runs a capable agent, every part still reachable (stage 16: Facade) |
+| `src/miniharness/harness.py` | `Harness`: one object that builds and runs a capable agent, every part still reachable (stage 16: Facade); `registry=` (Singleton → DI) |
 | `src/miniharness/trace.py` | Trace tree + visitors: `CostSummary`, `HtmlReport` (stage 14: Visitor) |
 | `src/miniharness/types.py` | Provider-neutral `Message`, `ToolCall`, `LLMResponse`; stream chunks `TextDelta`, `Completed` |
-| `src/miniharness/agent.py` | The agent (stage 1: Template Method), with an injected provider; `iter_run()` (stage 15: Iterator); `first_state()` / `after_answer()` hooks (Bridge) |
+| `src/miniharness/agent.py` | The agent (stage 1: Template Method), with an injected provider (wires the default Toolbox it builds to its own bus); `iter_run()` (stage 15: Iterator); `first_state()` / `after_answer()` hooks (Bridge) |
 | `src/miniharness/agent_types.py` | `PlannerAgent`, `ReviewerAgent`: agent types that run on any provider (bonus: Bridge) |
 | `src/miniharness/lifecycle.py` | Agent lifecycle states: `start()` / `step()` (stage 9: State); generator `iter_step()` (stage 15); `Planning` state and the shared `model_call()` (Bridge) |
-| `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory); usage/budget/retry/cache wrappers (stage 6: Decorator); `FallbackChain` (stage 7); `LazyProvider` (stage 8: Proxy); `CircuitBreaker` (stage 9: State); `build_stack()` recipe (stage 16); `stream()` on every provider and wrapper, `streaming.py` helpers (stage 15: Iterator) |
+| `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory), an injectable `ProviderRegistry` with a `default_registry` (bonus: Singleton → DI); usage/budget/retry/cache wrappers (stage 6: Decorator); `FallbackChain` (stage 7); `LazyProvider` (stage 8: Proxy); `CircuitBreaker` (stage 9: State); `build_stack()` recipe (stage 16); `stream()` on every provider and wrapper, `streaming.py` helpers (stage 15: Iterator) |
 | `src/miniharness/adapters/` | Our types ↔ OpenAI / Anthropic wire formats (stage 2: Adapter) |
 | `src/miniharness/checkpoint.py` | `Checkpoint`: snapshot, save, load (stage 11: Memento); `Agent.fork()` (Prototype) |
 | `src/miniharness/events.py` | Typed events + `EventBus` (stage 10: Observer); `TokenStreamed` (stage 15) |
@@ -68,6 +74,7 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 | `src/miniharness/prompts.py` | `SystemPromptBuilder` + `default_prompt()` director (stage 4: Builder) |
 | `src/miniharness/team.py` | `Team` mediator: peers talk only through it (stage 13: Mediator) |
 | `src/miniharness/tools/` | `Tool` classes, `ToolCommand`, and the `Toolbox` invoker with undo (stage 5: Command); `PolicyChain` permissions (stage 7: Chain of Responsibility); `ToolboxView` (stage 8: Proxy); `AgentTool` (stage 12: Composite) |
+| `tests/test_singleton.py` | A textbook Singleton kept as a specimen, next to the DI that replaced it |
 | `DECISIONS.md` | Architecture decision log: options, trade-offs, open questions |
 | `PATTERNS.md` | Your learning journal |
 
@@ -94,7 +101,7 @@ Only add a pattern once you feel the pain it solves.
 | 15 | Streaming tokens and events; `for event in agent.iter_run(task)` | Iterator ✅ |
 | 16 | `Harness("openrouter").run(task)` hides the wiring; `build_stack()` recipe | Facade ✅ |
 | + | Agent types × providers: `PlannerAgent`, `ReviewerAgent` on any provider | Bridge ✅ |
-| + | Global registry → dependency injection | Singleton (and why to avoid it) |
+| + | Global registry → injected `ProviderRegistry`; agents wire what they build | Singleton (and why to avoid it) ✅ |
 | + | Per-request model choice (cheap vs strong) | Strategy, part 2 |
 
 ## Rules of the road

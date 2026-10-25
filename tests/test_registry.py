@@ -4,11 +4,11 @@ from miniharness.providers import (
     AnthropicProvider,
     MockProvider,
     OpenRouterProvider,
+    ProviderRegistry,
     available_providers,
     create_provider,
-    register_provider,
+    default_registry,
 )
-from miniharness.providers import registry
 
 
 def test_all_builtin_providers_are_registered():
@@ -49,19 +49,44 @@ def test_unknown_provider_lists_the_available_ones():
         create_provider("nope:model")
 
 
-def test_registering_adds_a_provider_without_editing_the_factory(monkeypatch):
-    # Isolate the module-level registry so this test can't leak into others
-    monkeypatch.setattr(registry, "_REGISTRY", dict(registry._REGISTRY))
+def test_registering_adds_a_provider_without_editing_the_factory():
+    # No monkeypatch (D17 is gone): register into a copy, and the default never sees it
+    mine = default_registry.copy()
 
-    @register_provider("echo")
+    @mine.register("echo")
     class EchoProvider(MockProvider):
         pass
 
-    assert isinstance(create_provider("echo"), EchoProvider)
+    assert isinstance(mine.create("echo"), EchoProvider)
+    assert "echo" not in default_registry
 
 
-def test_duplicate_names_are_rejected(monkeypatch):
-    monkeypatch.setattr(registry, "_REGISTRY", dict(registry._REGISTRY))
-
+def test_duplicate_names_are_rejected():
     with pytest.raises(ValueError, match="already registered"):
-        register_provider("mock")(MockProvider)
+        default_registry.copy().register("mock")(MockProvider)
+
+
+def test_the_builtins_live_in_the_default_registry():
+    assert all(name in default_registry for name in ["anthropic", "mock", "openrouter"])
+    assert available_providers() == default_registry.names()
+
+
+def test_copies_are_independent_both_ways():
+    a = ProviderRegistry({"mock": MockProvider})
+    b = a.copy()
+    b.add("other", MockProvider)
+    a.add("third", MockProvider)
+
+    assert a.names() == ["mock", "third"]
+    assert b.names() == ["mock", "other"]
+
+
+def test_an_empty_registry_knows_nothing():
+    with pytest.raises(ValueError, match="Unknown provider 'mock'. Available: $"):
+        ProviderRegistry().create("mock")
+
+
+def test_a_factory_can_be_any_callable():
+    registry = ProviderRegistry({"scripted": lambda model="s": MockProvider([], model=model)})
+
+    assert registry.create("scripted:v2").model == "v2"

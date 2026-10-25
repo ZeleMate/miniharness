@@ -15,7 +15,7 @@ from pathlib import Path
 from miniharness.providers.base import Provider
 from miniharness.providers.breaker import CircuitBreaker
 from miniharness.providers.proxies import lazy_provider
-from miniharness.providers.registry import create_provider
+from miniharness.providers.registry import ProviderRegistry, resolve
 from miniharness.providers.wrappers import BudgetGuard, DiskCache, FallbackChain, Retry, UsageTracker
 
 
@@ -35,18 +35,21 @@ def build_stack(
     cache: str | Path | None = None,
     fallback: str | Provider | None = None,
     retries: int = 3,
+    registry: ProviderRegistry | None = None,
 ) -> Stack:
     """`DiskCache(Retry(BudgetGuard(UsageTracker(base))))`, leaving out what isn't asked for.
 
     `model` is a `"provider:model"` spec (built now, so a bad config fails at
     startup) or a ready Provider. A `fallback` spec is built lazily: its key is
     only needed if the main provider fails. The breaker stops retrying a
-    failing main provider on every turn.
+    failing main provider on every turn. Both specs are looked up in
+    `registry` (the default registry unless one is injected).
     """
-    base = create_provider(model) if isinstance(model, str) else model
+    providers = resolve(registry)
+    base = providers.create(model) if isinstance(model, str) else model
     chain = None
     if fallback is not None:
-        backup = lazy_provider(fallback) if isinstance(fallback, str) else fallback
+        backup = lazy_provider(fallback, registry=providers) if isinstance(fallback, str) else fallback
         base = chain = FallbackChain([CircuitBreaker(base), backup])
     tracker = UsageTracker(base)  # innermost: sees every real call, failed ones too
     guarded = tracker if budget is None else BudgetGuard(tracker, limit_usd=budget)

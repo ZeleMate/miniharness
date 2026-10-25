@@ -4,7 +4,13 @@ from miniharness.providers.breaker import CircuitBreaker
 from miniharness.providers.mock import MockProvider
 from miniharness.providers.openrouter import OpenRouterProvider
 from miniharness.providers.proxies import LazyProvider, lazy_provider
-from miniharness.providers.registry import available_providers, create_provider, register_provider
+from miniharness.providers.registry import (
+    ProviderRegistry,
+    available_providers,
+    create_provider,
+    default_registry,
+    register_provider,
+)
 from miniharness.providers.stack import Stack, build_stack
 from miniharness.providers.streaming import as_stream, collect, stream_from
 from miniharness.providers.wrappers import BudgetGuard, DiskCache, FallbackChain, Retry, UsageTracker
@@ -20,6 +26,7 @@ __all__ = [
     "MockProvider",
     "OpenRouterProvider",
     "Provider",
+    "ProviderRegistry",
     "Retry",
     "Stack",
     "UsageTracker",
@@ -28,6 +35,7 @@ __all__ = [
     "build_stack",
     "collect",
     "create_provider",
+    "default_registry",
     "lazy_provider",
     "register_provider",
     "stream_from",
