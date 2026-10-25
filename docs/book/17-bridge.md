@@ -1,6 +1,6 @@
 # Chapter 17. Two hierarchies that grow apart
 
-*Pattern: Bridge. Code: `src/miniharness/agent_types.py`.*
+*Pattern: [Bridge](https://refactoring.guru/design-patterns/bridge). Code: `src/miniharness/agent_types.py`.*
 
 ## A promise from stage 2
 

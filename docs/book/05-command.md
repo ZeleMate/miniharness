@@ -1,6 +1,6 @@
 # Chapter 5. Actions you can take back
 
-*Pattern: Command. Code: `src/miniharness/tools/base.py`, `tools/toolbox.py`, `tools/files.py`.*
+*Pattern: [Command](https://refactoring.guru/design-patterns/command). Code: `src/miniharness/tools/base.py`, `tools/toolbox.py`, `tools/files.py`.*
 
 ## What a tool call was
 

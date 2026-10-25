@@ -1,6 +1,6 @@
 # Chapter 3. Strings that become objects
 
-*Pattern: Factory. Code: `src/miniharness/providers/registry.py`.*
+*Pattern: [Factory](https://refactoring.guru/design-patterns/factory-comparison). Code: `src/miniharness/providers/registry.py`.*
 
 ## The smell that stage 2 left behind
 

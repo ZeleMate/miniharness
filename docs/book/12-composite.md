@@ -1,6 +1,6 @@
 # Chapter 12. Agents inside tools
 
-*Pattern: Composite. Code: `src/miniharness/tools/agent_tool.py`.*
+*Pattern: [Composite](https://refactoring.guru/design-patterns/composite). Code: `src/miniharness/tools/agent_tool.py`.*
 
 ## Delegation without a new machine
 

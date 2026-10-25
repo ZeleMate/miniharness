@@ -1,6 +1,6 @@
 # Chapter 7. Who decides?
 
-*Pattern: Chain of Responsibility. Code: `src/miniharness/tools/policy.py`, `FallbackChain` in
+*Pattern: [Chain of Responsibility](https://refactoring.guru/design-patterns/chain-of-responsibility). Code: `src/miniharness/tools/policy.py`, `FallbackChain` in
 `providers/wrappers.py`.*
 
 ## A chain is not a stack

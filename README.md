@@ -118,3 +118,16 @@ Only add a pattern once you feel the pain it solves.
    Record design choices in `DECISIONS.md`, including the small ones.
 4. **Notice where Python dissolves a pattern** (functions as Strategy/Command, generators as Iterator).
 5. **No speculative patterns.** A real need (a second provider, a hard-to-write test) must come first.
+
+## Credits
+
+The pattern catalogue this project learned from is
+[refactoring.guru](https://refactoring.guru/design-patterns) by Alexander Shvets, and each book
+chapter links to the page for its pattern. Everything here is written from scratch: no text,
+code examples or illustrations are copied from the site.
+
+If you add material from refactoring.guru, follow its
+[Content Usage Policy](https://refactoring.guru/content-usage-policy): link to the exact page it
+came from, quote only short passages (never a substantial part of an article), and use no more
+than 10 of its illustrations in total. For anything beyond that, ask the authors first at
+support@refactoring.guru.

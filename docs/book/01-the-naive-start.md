@@ -1,6 +1,6 @@
 # Chapter 1. The naive start: a loop and an ugly function
 
-*Pattern: Template Method. Code: `src/miniharness/agent.py`.*
+*Pattern: [Template Method](https://refactoring.guru/design-patterns/template-method). Code: `src/miniharness/agent.py`.*
 
 ## The smallest thing that works
 

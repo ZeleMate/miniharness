@@ -1,6 +1,6 @@
 # Chapter 14. Asking questions of a finished run
 
-*Pattern: Visitor. Code: `src/miniharness/trace.py`.*
+*Pattern: [Visitor](https://refactoring.guru/design-patterns/visitor). Code: `src/miniharness/trace.py`.*
 
 ## A tree waiting to be walked
 

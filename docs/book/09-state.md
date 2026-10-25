@@ -1,6 +1,6 @@
 # Chapter 9. Objects that change their own behavior
 
-*Pattern: State. Code: `src/miniharness/providers/breaker.py`, `src/miniharness/lifecycle.py`.*
+*Pattern: [State](https://refactoring.guru/design-patterns/state). Code: `src/miniharness/providers/breaker.py`, `src/miniharness/lifecycle.py`.*
 
 ## Two problems, one pattern
 

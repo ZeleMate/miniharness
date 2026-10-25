@@ -1,6 +1,6 @@
 # Chapter 2. Two providers, one interface
 
-*Patterns: Strategy and Adapter. Code: `src/miniharness/providers/`, `src/miniharness/adapters/`.*
+*Patterns: [Strategy](https://refactoring.guru/design-patterns/strategy) and [Adapter](https://refactoring.guru/design-patterns/adapter). Code: `src/miniharness/providers/`, `src/miniharness/adapters/`.*
 
 ## The safety net first
 

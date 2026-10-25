@@ -1,6 +1,6 @@
 # Chapter 18. The last global
 
-*Pattern: Singleton, and why dependency injection replaces it. Code: `src/miniharness/providers/registry.py`,
+*Pattern: [Singleton](https://refactoring.guru/design-patterns/singleton), and why dependency injection replaces it. Code: `src/miniharness/providers/registry.py`,
 `tests/test_singleton.py`.*
 
 ## A pattern you learn in order to avoid

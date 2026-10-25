@@ -1,6 +1,6 @@
 # Chapter 6. Layers around every call
 
-*Pattern: Decorator. Code: `src/miniharness/providers/wrappers.py`.*
+*Pattern: [Decorator](https://refactoring.guru/design-patterns/decorator). Code: `src/miniharness/providers/wrappers.py`.*
 
 ## Behavior that belongs to every provider
 

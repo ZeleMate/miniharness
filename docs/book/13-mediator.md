@@ -1,6 +1,6 @@
 # Chapter 13. A team that talks through a coordinator
 
-*Pattern: Mediator. Code: `src/miniharness/team.py`.*
+*Pattern: [Mediator](https://refactoring.guru/design-patterns/mediator). Code: `src/miniharness/team.py`.*
 
 ## Trees only point down
 

@@ -1672,3 +1672,16 @@ from `agent.messages` afterwards.
   injected copy with a `cheap` alias plus a `cheap:qwen/qwen3-coder` fallback that stayed lazy (3
   calls, $0.00068, answer 395); `Harness("cheap")` *without* `registry=` failing at startup with
   "Unknown provider 'cheap'"; and the default registry unchanged afterwards.
+
+### D212. Crediting refactoring.guru
+**Status:** settled (your call)
+- **Why:** the project learned its patterns from refactoring.guru, and you wanted to respect the
+  authors' [Content Usage Policy](https://refactoring.guru/content-usage-policy) as fully as possible.
+- **Audit:** nothing in the repo copies the site's text, code examples or illustrations. All of the
+  book and the docs are original prose. The only mentions were in the README (linked) and in the
+  preface (not linked).
+- **Done:** linked the preface mention; linked every chapter's pattern name to its catalogue page
+  (chapter 3's Factory goes to the factory comparison page, since the registry is a simple factory
+  rather than Factory Method); added a Credits section to the README that states the policy's
+  limits, so future additions stay inside them.
+- **Revisit:** if a quote or illustration is ever added, link that specific page next to it.

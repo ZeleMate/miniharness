@@ -1,6 +1,6 @@
 # Chapter 4. A prompt with assembly rules
 
-*Pattern: Builder. Code: `src/miniharness/prompts.py`.*
+*Pattern: [Builder](https://refactoring.guru/design-patterns/builder). Code: `src/miniharness/prompts.py`.*
 
 ## Questioning the pattern first
 

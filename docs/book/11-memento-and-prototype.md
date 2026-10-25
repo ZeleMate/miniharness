@@ -1,6 +1,6 @@
 # Chapter 11. Going back in time
 
-*Patterns: Memento and Prototype. Code: `src/miniharness/checkpoint.py`, `Agent.checkpoint()`, `restore()`,
+*Patterns: [Memento](https://refactoring.guru/design-patterns/memento) and [Prototype](https://refactoring.guru/design-patterns/prototype). Code: `src/miniharness/checkpoint.py`, `Agent.checkpoint()`, `restore()`,
 `fork()`.*
 
 ## Three things the harness couldn't do

@@ -1,6 +1,6 @@
 # Chapter 16. One front door
 
-*Pattern: Facade. Code: `src/miniharness/harness.py`, `src/miniharness/providers/stack.py`.*
+*Pattern: [Facade](https://refactoring.guru/design-patterns/facade). Code: `src/miniharness/harness.py`, `src/miniharness/providers/stack.py`.*
 
 ## Ten objects in the right order
 

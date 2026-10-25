@@ -1,6 +1,6 @@
 # Preface: how this project worked
 
-The idea was simple. Reading about design patterns on refactoring.guru explains *what* they are, but not
+The idea was simple. Reading about design patterns on [refactoring.guru](https://refactoring.guru/design-patterns) explains *what* they are, but not
 what it feels like to *need* one. So instead of studying patterns in the abstract, we built something real,
 a small harness for LLM agents, and let each pattern arrive only when the code started to hurt without it.
 

@@ -1,6 +1,6 @@
 # Chapter 10. Watching without touching
 
-*Pattern: Observer. Code: `src/miniharness/events.py`, `src/miniharness/observers.py`.*
+*Pattern: [Observer](https://refactoring.guru/design-patterns/observer). Code: `src/miniharness/events.py`, `src/miniharness/observers.py`.*
 
 ## The problem in the example script
 

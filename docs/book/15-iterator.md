@@ -1,6 +1,6 @@
 # Chapter 15. Answers that arrive over time
 
-*Pattern: Iterator. Code: `src/miniharness/providers/streaming.py`, `Agent.iter_run()`, `lifecycle.py`.*
+*Pattern: [Iterator](https://refactoring.guru/design-patterns/iterator). Code: `src/miniharness/providers/streaming.py`, `Agent.iter_run()`, `lifecycle.py`.*
 
 ## Staring at a blank terminal
 

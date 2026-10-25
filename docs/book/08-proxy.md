@@ -1,6 +1,6 @@
 # Chapter 8. Stand-ins
 
-*Pattern: Proxy. Code: `src/miniharness/providers/proxies.py`, `src/miniharness/tools/view.py`.*
+*Pattern: [Proxy](https://refactoring.guru/design-patterns/proxy). Code: `src/miniharness/providers/proxies.py`, `src/miniharness/tools/view.py`.*
 
 ## Same shape, different intent
 
