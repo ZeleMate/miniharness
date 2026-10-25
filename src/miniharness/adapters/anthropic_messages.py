@@ -5,7 +5,8 @@ prompt is a separate parameter, tool calls are `tool_use` content blocks, and
 tool results go inside a *user* message.
 """
 
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from miniharness.types import (
     Completed,

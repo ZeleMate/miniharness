@@ -5,9 +5,10 @@ The chain stops at the first verdict. If nobody decides, the default applies.
 """
 
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Protocol
+from typing import Protocol
 
 from miniharness.tools.base import Tool
 from miniharness.types import ToolCall

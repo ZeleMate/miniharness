@@ -23,7 +23,8 @@ round) stream, count toward `max_steps` and emit ModelCalled like the main loop.
 """
 
 import time
-from typing import TYPE_CHECKING, Any, Generator, Iterator
+from collections.abc import Generator, Iterator
+from typing import TYPE_CHECKING, Any
 
 from miniharness.errors import StopRun
 from miniharness.events import ModelCalled, TokenStreamed

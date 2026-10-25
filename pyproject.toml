@@ -37,6 +37,13 @@ python-preference = "only-managed"  # always use uv-installed Python, never Home
 # comes from requires-python.
 extend-exclude = ["workspace"]
 
+[tool.ruff.lint]
+extend-ignore = [
+    # Tools declare `parameters` as a class-level dict on purpose (the Tool API is
+    # declarative, and an instance may override it), and nothing mutates it.
+    "RUF012",
+]
+
 [tool.mypy]
 files = ["src"]
 mypy_path = "src"

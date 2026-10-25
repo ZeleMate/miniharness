@@ -9,7 +9,7 @@ Each state is its own class with its own hooks, so no method branches on
 """
 
 import time
-from typing import Callable, Iterator
+from collections.abc import Callable, Iterator
 
 from miniharness.errors import CircuitOpenError
 from miniharness.providers.base import Provider

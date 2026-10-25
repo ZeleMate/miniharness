@@ -21,9 +21,9 @@ default would have silently skipped the budget.
 import hashlib
 import json
 import pickle
+from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
-from typing import Iterator
 
 import anthropic
 import openai

@@ -234,7 +234,6 @@ def test_policies_decide_in_order_on_the_callers_thread():
     class Recording:
         def check(self, call, tool):
             seen.append((call.id, threading.current_thread()))
-            return None
 
     policy = PolicyChain([Recording(), MaxCalls("probe", 2)], default=Verdict.ALLOW)
     tools = box(Probe(), policy=policy)

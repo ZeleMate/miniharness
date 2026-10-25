@@ -8,7 +8,7 @@ changes to the agent never leak into it (or the other way round).
 import copy
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +39,7 @@ class Checkpoint:
             state=copy.deepcopy(state),
             model_calls=model_calls,
             tool_mark=tool_mark,
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
         )
 
     # --- persistence ---------------------------------------------------------

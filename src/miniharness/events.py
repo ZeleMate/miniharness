@@ -7,10 +7,11 @@ is listening (a console printer, a trace file, a test) or whether anyone is.
 from __future__ import annotations
 
 import warnings
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Callable, Iterator, Union
+from typing import TYPE_CHECKING
 
 from miniharness.types import ToolCall, Usage
 
@@ -88,15 +89,15 @@ class RunFinished:
     depth: int = 0
 
 
-Event = Union[
-    RunStarted,
-    StateChanged,
-    TokenStreamed,
-    ModelCalled,
-    ToolCalled,
-    MessageRouted,
-    RunFinished,
-]
+Event = (
+    RunStarted
+    | StateChanged
+    | TokenStreamed
+    | ModelCalled
+    | ToolCalled
+    | MessageRouted
+    | RunFinished
+)
 Handler = Callable[[Event], None]
 
 
@@ -149,7 +150,7 @@ class EventBus:
         for handler in list(self._handlers):  # a handler may unsubscribe itself
             try:
                 handler(event)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  a broken observer mustn't stop the run
                 self.errors.append((handler, event, e))
                 warnings.warn(
                     f"Event handler {handler!r} failed on {type(event).__name__}: {e!r}",

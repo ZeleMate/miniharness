@@ -349,7 +349,7 @@ def test_retry_does_not_restart_a_stream_that_already_showed_text():
 
     with pytest.raises(MalformedResponseError):
         for chunk in retry.stream(HELLO, {}):
-            seen.append(chunk)
+            seen.append(chunk)  # noqa: PERF402  keeps what arrived before the raise
     assert seen == [TextDelta("half")]  # retrying would have shown "halfok"
     assert retry.retries == 0
 

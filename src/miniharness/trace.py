@@ -19,9 +19,10 @@ the nodes. The flip side: adding a node type touches every visitor.
 import argparse
 import html
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 # --- Nodes ---------------------------------------------------------------------------
 

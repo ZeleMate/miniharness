@@ -1,5 +1,5 @@
 import re
-from typing import Iterator
+from collections.abc import Iterator
 
 from miniharness.providers.registry import register_provider
 from miniharness.types import (

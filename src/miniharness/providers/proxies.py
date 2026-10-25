@@ -4,7 +4,8 @@ Same interface as a decorator, different intent: a decorator adds behavior,
 while a proxy decides whether, when, or where the real object is reached.
 """
 
-from typing import Any, Callable, Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 
 from miniharness.providers.base import Provider
 from miniharness.providers.registry import ProviderRegistry, resolve

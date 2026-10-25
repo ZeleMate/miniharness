@@ -5,7 +5,8 @@ Pure translation, no network. Works for any OpenAI-compatible server
 """
 
 import json
-from typing import Any, Iterable, Iterator
+from collections.abc import Iterable, Iterator
+from typing import Any
 
 from miniharness.errors import MalformedResponseError
 from miniharness.types import (

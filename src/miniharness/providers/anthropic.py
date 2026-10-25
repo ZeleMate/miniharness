@@ -1,6 +1,7 @@
 import os
+from collections.abc import Iterator
 from dataclasses import replace
-from typing import Any, Iterator
+from typing import Any
 
 import anthropic
 

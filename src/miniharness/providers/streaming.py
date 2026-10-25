@@ -4,7 +4,7 @@
 `complete()` still works everywhere, it just doesn't stream (DECISIONS.md D157).
 """
 
-from typing import Iterable, Iterator
+from collections.abc import Iterable, Iterator
 
 from miniharness.providers.base import Provider
 from miniharness.types import (

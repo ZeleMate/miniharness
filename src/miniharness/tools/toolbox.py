@@ -7,14 +7,14 @@ alone. Outputs, history and events still follow the model's order.
 
 import contextvars
 import uuid
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import groupby
 from types import MappingProxyType
-from typing import Callable, Mapping, Protocol
+from typing import Protocol
 
 from miniharness.events import EventBus, ToolCalled
-
 from miniharness.tools.base import IrreversibleError, Tool, ToolCommand
 from miniharness.tools.policy import Decision, PolicyChain, Verdict, default_policy
 from miniharness.types import ToolCall, ToolSpec
@@ -238,7 +238,7 @@ class Toolbox:
 def _attempt(command: ToolCommand) -> Exception | None:
     try:
         command.execute()
-    except Exception as e:  # becomes an error message, not a crash
+    except Exception as e:  # noqa: BLE001  becomes an error message, not a crash
         return e
     return None
 

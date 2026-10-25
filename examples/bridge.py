@@ -43,9 +43,8 @@ def main() -> None:
                     model, agent_type=agent_type, budget=args.budget, console=False
                 )
                 answer = h.run(args.task)
-            except (
-                Exception
-            ) as e:  # one broken cell shouldn't hide the rest of the grid
+            # One broken cell shouldn't hide the rest of the grid.
+            except Exception as e:  # noqa: BLE001
                 print(f"{label}: failed: {type(e).__name__}: {e}\n")
                 continue
             print(f"{label}: {answer.strip()}\n  {h.report()}\n")

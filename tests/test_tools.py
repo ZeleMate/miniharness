@@ -10,8 +10,8 @@ from miniharness.tools import (
     ToolResult,
     WriteFile,
     default_tools,
+    files,
 )
-from miniharness.tools import files
 from miniharness.types import ToolCall
 
 

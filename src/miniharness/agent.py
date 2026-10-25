@@ -38,7 +38,8 @@ so it can run the read-only ones together (`Toolbox(max_workers=...)`).
 
 import copy
 import warnings
-from typing import Any, Callable, Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 
 from miniharness.checkpoint import Checkpoint
 from miniharness.events import (
@@ -100,8 +101,8 @@ class Agent:
 
     def follow_up(self, text: str) -> AgentState:
         """Continue a finished run with a new user message (keeps the conversation)."""
-        if not isinstance(self.state, Done):
-            raise RuntimeError(
+        if not isinstance(self.state, Done):  # a state check, not a type check
+            raise RuntimeError(  # noqa: TRY004
                 f"Can only follow up on a finished run, not one that is {self.state.name}"
             )
         with agent_scope(self.name):
