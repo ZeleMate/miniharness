@@ -118,7 +118,11 @@ jobs:
       # Semgrep CE with registry rulesets: no account, no token, no metrics.
       # The rulesets aren't versioned, so the Monday run picks up new rules.
       # Suppress a finding inline with `# nosemgrep: <rule-id>` and a reason.
-      - run: >-
+      - env:
+          # semgrep-core segfaulted in its io_uring backend on ubuntu-24.04;
+          # Eio's portable backend avoids it.
+          EIO_BACKEND: posix
+        run: >-
           uv run --project .github/tools semgrep scan
           --config p/python --config p/security-audit --config p/secrets
           --metrics=off --disable-version-check --error .
