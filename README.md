@@ -61,6 +61,25 @@ Harness("cheap", registry=mine).run("Hi")
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
 
+## Development
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs these on every PR and push to `main`,
+and weekly for new advisories and Semgrep rules. All of them run the same way locally:
+
+```bash
+uv run ruff check .                 # lint (`--fix` applies the safe fixes)
+uv run ruff format .                # format; CI runs `--check`
+uv run mypy                         # types, src/ only
+uv run pytest --cov                 # tests, 95% coverage floor; CI runs 3.12, 3.13 and 3.14
+uv run --project .github/tools semgrep scan --config p/python --config p/security-audit \
+  --config p/secrets --metrics=off --error .   # SAST, no account needed
+```
+
+CI also checks both lockfiles, audits every locked package with pip-audit, scans the whole git
+history for secrets with gitleaks, and lints the workflows with actionlint and zizmor. The CI-only
+tools live in [`.github/tools`](.github/tools/pyproject.toml), locked apart from the app (DECISIONS.md D225).
+Dependabot bumps both lockfiles and the action pins weekly, after a 7-day cooldown.
+
 ## Study book
 
 [`docs/book/`](docs/book/README.md) is the project written up as a book to read: one chapter per stage,

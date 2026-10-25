@@ -56,5 +56,6 @@ source = ["miniharness"]
 branch = true
 
 [tool.coverage.report]
+fail_under = 95  # 97% when CI was added
 show_missing = true
 skip_covered = true

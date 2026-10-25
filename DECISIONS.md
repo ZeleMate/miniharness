@@ -1865,3 +1865,59 @@ from `agent.messages` afterwards.
   because no sub-agent and no model call ever runs in a worker (D216).
 - **`MaxCalls` (D62):** policies are still checked before a command is created (D60), and `MaxCalls`
   counts in the model's order (D219).
+
+---
+
+## CI pipeline
+
+### D224. What CI runs, and how it's hardened (your calls on Semgrep, ruff and mypy)
+**Status:** accepted
+- **Jobs:** `lint` (ruff check + format check), `typecheck` (mypy), `test` (pytest with coverage on
+  3.12, 3.13 and 3.14), `deps` (both lockfiles current, pip-audit), `sast` (Semgrep), `secrets`
+  (gitleaks over the full history), `workflows` (actionlint, zizmor). Triggers: PRs, pushes to
+  `main`, Mondays for new advisories and rules, and by hand.
+- **Hardening,** the same as the other repos: `permissions: {}` with read-only jobs, no secrets,
+  `persist-credentials: false`, every action pinned to a commit SHA (zizmor enforces it), uv pinned
+  by version *and* checksum, Go tools fetched as digest-checked release archives, and Dependabot with
+  a 7-day cooldown. New tool versions were picked at least 7 days old for the same reason.
+- **Semgrep (your call): Semgrep CE, no account.** `semgrep scan` with `p/python`,
+  `p/security-audit` and `p/secrets`, `--metrics=off`. **Options:** CE with no token · `semgrep ci`
+  with a Semgrep AppSec token (cross-file taint, supply-chain reachability, a dashboard). **Cost:** no
+  cross-file analysis, and the registry rulesets aren't versioned, so a new rule can turn a run red
+  without a commit. Nothing was wired in before this: no config, no token, no Semgrep checks.
+- **Ruff (your call): its defaults, line length 88.** Ruff 0.17's default rule set is broad (about
+  400 rules), so no `select` list. One mechanical formatting commit, listed in
+  `.git-blame-ignore-revs`. RUF012 is off: `Tool.parameters` is a declarative class attribute.
+- **mypy (your call) on `src/` only,** with `check_untyped_defs`. **Options:** mypy on src (25
+  errors) · pyright on everything (160) · later. `--strict` would add 23 more errors; tightening is
+  open. Tests and examples aren't type-checked.
+- **Coverage floor 95%,** with 97% measured when CI was added: high enough to notice untested new
+  code, with room to spare so one refactor doesn't go red.
+
+### D225. The CI tools have their own lockfile in `.github/tools`
+**Status:** accepted (made during implementation)
+- **Context:** Semgrep, pip-audit and zizmor first went into a `security` dependency group of the
+  app. uv resolves every group together, and Semgrep pins `opentelemetry-api~=1.37.0`, so the app's
+  own copy (via `anthropic`) was quietly pulled down from 1.45.1 to 1.37.0, which has a CVE.
+- **Options:** a separate uv project for the tools · `uvx semgrep==…` in CI (no lock, no hashes) ·
+  uv `conflicts` between groups (can't separate a group from the project's own dependencies).
+- **Chosen:** a separate project. Tools stay hash-locked, Dependabot bumps them, and the app's
+  resolution is exactly what it was without them. **Cost:** a second lockfile.
+
+### D226. Fixes made so the checks could pass
+**Status:** accepted (made during implementation)
+- **`Provider.model` is a read-only property in the protocol.** As a plain `model: str` it's a
+  settable attribute, which the wrappers' delegating property doesn't satisfy (14 of mypy's 25
+  errors). Code that reads `.model` is unaffected.
+- **`Agent.answer`** returns a finished run's answer (a stopped run's says why) and raises
+  `RuntimeError` before then. It replaces five reads of `state.answer`, which only `Done` and
+  `Stopped` have.
+- **`Tool.run(self, *args, **arguments)`:** with `*args` too, mypy lets each tool narrow it to its
+  own parameters, and `AgentTool` lost its `type: ignore`.
+- **Pickle (D51) is suppressed for Semgrep in one place.** `DiskCache` now reads and writes through
+  `_load`/`_store`, the only two lines with a `nosemgrep` for `avoid-pickle`.
+- **Two ignored advisories in the CI tools only:** CVE-2026-59951 (`mcp`) and CVE-2026-114603
+  (`opentelemetry-api`). Semgrep pins both exactly, its newest release included. Both are resource
+  exhaustion in code `semgrep scan` doesn't run. The app's audit has no exceptions. **Revisit:**
+  drop each `--ignore-vuln` once a Semgrep bump lets the fixed version in; pip-audit won't say
+  when an ignore goes stale.

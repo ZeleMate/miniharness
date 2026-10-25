@@ -1,0 +1,16 @@
+# CI-only tools, locked apart from the app. Sharing uv.lock with miniharness let
+# Semgrep's exact pins pull the app's own dependencies down (DECISIONS.md D225).
+# Run them with `uv run --project .github/tools <tool>`.
+[project]
+name = "miniharness-ci-tools"
+version = "0"
+requires-python = ">=3.13"
+dependencies = [
+    "pip-audit==2.10.1",
+    "semgrep==1.181.0",
+    "zizmor==1.31.1",
+]
+
+[tool.uv]
+package = false
+python-preference = "only-managed"

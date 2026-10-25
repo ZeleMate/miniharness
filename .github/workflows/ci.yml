@@ -1,0 +1,162 @@
+# CI: the same checks you can run locally (see README "Development").
+#
+# Hardening: no secrets, no token permissions beyond reading the repo, every
+# action pinned to a full commit SHA, uv pinned by version and checksum, Python
+# tools installed from lockfiles with hashes (the CI tools from .github/tools,
+# locked apart from the app), and the Go tools fetched from their releases with
+# pinned SHA-256 digests (.github/actions/fetch-binary). The repo is private on
+# GitHub Free, so a red run can't block a merge: treat it as "don't merge yet".
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Mondays 06:17 UTC: new advisories and Semgrep rules land even without commits.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+# No token permissions by default; each job asks for read access only.
+permissions: {}
+
+# A new push to the same PR or branch cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Fail instead of silently re-locking when pyproject.toml and uv.lock disagree.
+  UV_LOCKED: "1"
+  FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: uv run --only-group dev ruff check --output-format=github .
+      - run: uv run --only-group dev ruff format --check --diff .
+
+  typecheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: uv run mypy
+
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # requires-python is >=3.12; 3.13 is .python-version.
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          python-version: ${{ matrix.python }}
+      # Coverage threshold: fail_under in pyproject.toml.
+      - run: uv run pytest --cov --cov-report=term
+
+  deps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Lockfiles match their pyproject.toml
+        run: |
+          uv lock --check
+          uv lock --check --project .github/tools
+      - name: Known vulnerabilities in the app and dev dependencies (no exceptions)
+        run: |
+          uv export --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/app.txt"
+          uv run --project .github/tools pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/app.txt"
+      # The CI tools only. Semgrep pins mcp and opentelemetry-api exactly, so these
+      # two can't be upgraded until it does; both are resource exhaustion in code
+      # `semgrep scan` never runs (an MCP HTTP server, tracestate parsing). Remove
+      # each ignore once a Semgrep bump lets the fixed version in (DECISIONS.md D226).
+      - name: Known vulnerabilities in the CI tools
+        run: |
+          uv export --project .github/tools --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/tools.txt"
+          uv run --project .github/tools pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/tools.txt" \
+            --ignore-vuln CVE-2026-59951 \
+            --ignore-vuln CVE-2026-114603
+
+  sast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # Semgrep CE with registry rulesets: no account, no token, no metrics.
+      # The rulesets aren't versioned, so the Monday run picks up new rules.
+      # Suppress a finding inline with `# nosemgrep: <rule-id>` and a reason.
+      - run: >-
+          uv run --project .github/tools semgrep scan
+          --config p/python --config p/security-audit --config p/secrets
+          --metrics=off --disable-version-check --error .
+
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The full history of every branch, not just the tip.
+          fetch-depth: 0
+      - uses: ./.github/actions/fetch-binary
+        with:
+          name: gitleaks
+          url: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          sha256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+      - run: gitleaks git --redact --no-banner --exit-code 1 .
+
+  workflows:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/fetch-binary
+        with:
+          name: actionlint
+          url: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          sha256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+      - uses: ./.github/actions/setup
+      # actionlint also runs shellcheck on `run:` scripts (preinstalled on the runner).
+      - run: actionlint
+      # Workflows, the composite actions and dependabot.yml; config in .github/zizmor.yml.
+      - run: uv run --project .github/tools zizmor --offline --no-progress .

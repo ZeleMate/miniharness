@@ -1,0 +1,41 @@
+# Downloads one release archive, refuses it unless its SHA-256 matches the pin,
+# and installs the named binary into /usr/local/bin (already on PATH). Used for
+# the Go tools that aren't on PyPI, instead of third-party setup actions.
+name: Fetch a verified binary
+description: Download a release archive over HTTPS, check its pinned SHA-256, and install one binary into /usr/local/bin.
+inputs:
+  name:
+    description: The binary's file name inside the archive.
+    required: true
+  url:
+    description: HTTPS URL of a .tar.gz or .zip release asset.
+    required: true
+  sha256:
+    description: The archive's expected SHA-256 (hex).
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Fetch ${{ inputs.name }}
+      shell: bash
+      # Inputs reach the script as environment variables, never pasted into it,
+      # so a value can't inject shell code.
+      env:
+        NAME: ${{ inputs.name }}
+        URL: ${{ inputs.url }}
+        SHA256: ${{ inputs.sha256 }}
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/fetch/$NAME"
+        mkdir -p "$dir/unpacked"
+        curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --output "$dir/archive" "$URL"
+        echo "$SHA256  $dir/archive" | sha256sum --check --strict -
+        case "$URL" in
+          *.zip) unzip -q "$dir/archive" -d "$dir/unpacked" ;;
+          *.tar.gz) tar -xzf "$dir/archive" -C "$dir/unpacked" ;;
+          *) echo "unsupported archive: $URL" >&2; exit 1 ;;
+        esac
+        found="$(find "$dir/unpacked" -type f -name "$NAME" -print -quit)"
+        if [ -z "$found" ]; then echo "$NAME not found in $URL" >&2; exit 1; fi
+        # A directory already on PATH, so nothing is written to $GITHUB_PATH.
+        sudo install -m 0755 "$found" "/usr/local/bin/$NAME"
