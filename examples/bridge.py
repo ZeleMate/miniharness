@@ -21,18 +21,30 @@ AGENT_TYPES = [Agent, PlannerAgent, ReviewerAgent]
 def main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser()
-    parser.add_argument("-m", "--model", action="append", help="provider[:model]; repeat for more columns")
+    parser.add_argument(
+        "-m",
+        "--model",
+        action="append",
+        help="provider[:model]; repeat for more columns",
+    )
     parser.add_argument("--budget", type=float, default=0.02, help="USD limit per cell")
-    parser.add_argument("task", nargs="?", default="What is (17 * 23) + 4? Use the tools, then answer in one line.")
+    parser.add_argument(
+        "task",
+        nargs="?",
+        default="What is (17 * 23) + 4? Use the tools, then answer in one line.",
+    )
     args = parser.parse_args()
 
     for model in args.model or ["openrouter"]:
         for agent_type in AGENT_TYPES:
             label = f"{agent_type.__name__} × {model}"
             try:  # building can fail too, e.g. a missing API key
-                h = Harness(model, agent_type=agent_type, budget=args.budget, console=False)
+                h = Harness(
+                    model, agent_type=agent_type, budget=args.budget, console=False
+                )
                 answer = h.run(args.task)
-            except Exception as e:  # one broken cell shouldn't hide the rest of the grid
+            # One broken cell shouldn't hide the rest of the grid.
+            except Exception as e:  # noqa: BLE001
                 print(f"{label}: failed: {type(e).__name__}: {e}\n")
                 continue
             print(f"{label}: {answer.strip()}\n  {h.report()}\n")

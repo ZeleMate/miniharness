@@ -15,7 +15,13 @@ from contextlib import closing
 from dotenv import load_dotenv
 
 from miniharness import Agent
-from miniharness.events import EventBus, ModelCalled, RunFinished, TokenStreamed, ToolCalled
+from miniharness.events import (
+    EventBus,
+    ModelCalled,
+    RunFinished,
+    TokenStreamed,
+    ToolCalled,
+)
 from miniharness.providers import UsageTracker, create_provider
 from miniharness.tools import Toolbox, default_tools
 
@@ -24,13 +30,26 @@ def main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model", default="openrouter", help="provider[:model]")
-    parser.add_argument("--max-words", type=int, help="stop after this many streamed words")
-    parser.add_argument("task", nargs="?", default="What is 17 * 23? Then explain in two sentences how you got it.")
+    parser.add_argument(
+        "--max-words", type=int, help="stop after this many streamed words"
+    )
+    parser.add_argument(
+        "task",
+        nargs="?",
+        default="What is 17 * 23? Then explain in two sentences how you got it.",
+    )
     args = parser.parse_args()
 
     tracker = UsageTracker(create_provider(args.model))
-    events = EventBus()  # shared, so ToolCalled reaches the iterator too (D98); nobody subscribes
-    agent = Agent(tracker, tools=Toolbox(default_tools(), events=events), events=events, stream=True)
+    events = (
+        EventBus()
+    )  # shared, so ToolCalled reaches the iterator too (D98); nobody subscribes
+    agent = Agent(
+        tracker,
+        tools=Toolbox(default_tools(), events=events),
+        events=events,
+        stream=True,
+    )
     print(f"[{tracker.model}]\n")
 
     words = 0

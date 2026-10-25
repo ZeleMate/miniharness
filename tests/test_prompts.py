@@ -22,7 +22,7 @@ def test_renders_sections_in_fixed_order_regardless_of_call_order():
 
 
 def test_volatile_facts_do_not_change_the_stable_prefix():
-    base = lambda: SystemPromptBuilder().identity("Agent.").instructions("Be brief.")  # noqa: E731
+    base = lambda: SystemPromptBuilder().identity("Agent.").instructions("Be brief.")
 
     monday = base().environment(date="2026-10-19").build()
     tuesday = base().environment(date="2026-10-20").build()

@@ -5,9 +5,10 @@ The chain stops at the first verdict. If nobody decides, the default applies.
 """
 
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Protocol
+from typing import Protocol
 
 from miniharness.tools.base import Tool
 from miniharness.types import ToolCall
@@ -52,10 +53,18 @@ class PolicyChain:
         if decision.verdict is not Verdict.ASK:
             return decision
         if self.approver is None:
-            return Decision(Verdict.DENY, f"{call.name} needs approval and no approver is available", decision.policy)
+            return Decision(
+                Verdict.DENY,
+                f"{call.name} needs approval and no approver is available",
+                decision.policy,
+            )
         if self.approver(call):
             return Decision(Verdict.ALLOW, f"{call.name} was approved", decision.policy)
-        return Decision(Verdict.DENY, f"{call.name} needs approval and was declined", decision.policy)
+        return Decision(
+            Verdict.DENY,
+            f"{call.name} needs approval and was declined",
+            decision.policy,
+        )
 
     def _first_verdict(self, call: ToolCall, tool: Tool) -> Decision:
         for policy in self.policies:
@@ -73,7 +82,9 @@ class DenyTools:
 
     def check(self, call: ToolCall, tool: Tool) -> Decision | None:
         if call.name in self.names:
-            return Decision(Verdict.DENY, f"{call.name} is on the deny list", "DenyTools")
+            return Decision(
+                Verdict.DENY, f"{call.name} is on the deny list", "DenyTools"
+            )
         return None
 
 
@@ -83,7 +94,9 @@ class AllowTools:
 
     def check(self, call: ToolCall, tool: Tool) -> Decision | None:
         if call.name in self.names:
-            return Decision(Verdict.ALLOW, f"{call.name} is on the allow list", "AllowTools")
+            return Decision(
+                Verdict.ALLOW, f"{call.name} is on the allow list", "AllowTools"
+            )
         return None
 
 
@@ -99,7 +112,11 @@ class MaxCalls:
         if call.name != self.name:
             return None
         if self.seen[call.name] >= self.limit:
-            return Decision(Verdict.DENY, f"{call.name} reached its limit of {self.limit} calls", "MaxCalls")
+            return Decision(
+                Verdict.DENY,
+                f"{call.name} reached its limit of {self.limit} calls",
+                "MaxCalls",
+            )
         # Counted when it passes, even if a later policy denies the call
         self.seen[call.name] += 1
         return None
@@ -115,7 +132,9 @@ class AllowReadOnly:
 class AskBeforeSideEffects:
     def check(self, call: ToolCall, tool: Tool) -> Decision | None:
         if tool.side_effects:
-            return Decision(Verdict.ASK, f"{call.name} changes something", "AskBeforeSideEffects")
+            return Decision(
+                Verdict.ASK, f"{call.name} changes something", "AskBeforeSideEffects"
+            )
         return None
 
 

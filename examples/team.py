@@ -1,7 +1,7 @@
 """A writer and a reviewer that only talk through a Team mediator.
 
-    uv run examples/team.py
-    uv run examples/team.py "Write a two-sentence product description for a rubber duck."
+uv run examples/team.py
+uv run examples/team.py "Write a two-sentence product description for a rubber duck."
 """
 
 import argparse
@@ -22,7 +22,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--model", default="openrouter")
     parser.add_argument("--budget", type=float, default=0.05)
-    parser.add_argument("task", nargs="?", default="Write a haiku about the undo button.")
+    parser.add_argument(
+        "task", nargs="?", default="Write a haiku about the undo button."
+    )
     args = parser.parse_args()
 
     stack = build_stack(args.model, budget=args.budget)  # one budget for the whole team
@@ -69,7 +71,9 @@ def main() -> None:
     print(f"\n{result}\n")
     total = tracker.total
     cost = "unknown" if total.cost_usd is None else f"${total.cost_usd:.6f}"
-    print(f"{len(team.log)} message(s) routed, {len(tracker.calls)} model call(s), {cost}")
+    print(
+        f"{len(team.log)} message(s) routed, {len(tracker.calls)} model call(s), {cost}"
+    )
 
 
 if __name__ == "__main__":

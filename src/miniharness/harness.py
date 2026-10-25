@@ -34,7 +34,16 @@ from miniharness.events import Event, EventBus, RunFinished, StateChanged
 from miniharness.observers import ConsolePrinter, JsonlTracer
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider, ProviderRegistry, UsageTracker, build_stack
-from miniharness.tools import AgentTool, Policy, Tool, Toolbox, ToolboxView, ToolCommand, default_policy, default_tools
+from miniharness.tools import (
+    AgentTool,
+    Policy,
+    Tool,
+    Toolbox,
+    ToolboxView,
+    ToolCommand,
+    default_policy,
+    default_tools,
+)
 from miniharness.types import ToolCall
 
 Approve = bool | Callable[[ToolCall], bool] | None
@@ -79,7 +88,9 @@ class Harness:
         - `agent_type`: `Agent` (plain tool loop), `PlannerAgent` or `ReviewerAgent`; helpers stay plain.
         - `registry`: where `model` and `fallback` specs are looked up (default: the built-ins).
         """
-        cache_dir = Path(".cache/llm") if cache is True else (Path(cache) if cache else None)
+        cache_dir = (
+            Path(".cache/llm") if cache is True else (Path(cache) if cache else None)
+        )
         self.workspace = Path(workspace) if workspace is not None else None
         if cache_dir is not None and self.workspace is not None:
             _check_cache_outside(cache_dir, self.workspace)
@@ -91,10 +102,10 @@ class Harness:
             registry=registry,
         )
         self.events = events if events is not None else EventBus()
-        self._console = ConsolePrinter() if console else None
+        printer = ConsolePrinter() if console else None
         self._muted = False
-        if self._console is not None:
-            self.events.subscribe(lambda event: None if self._muted else self._console(event))
+        if printer is not None:
+            self.events.subscribe(lambda event: None if self._muted else printer(event))
         if trace is not None:
             self.events.subscribe(JsonlTracer(trace))
 
@@ -141,7 +152,7 @@ class Harness:
         self.agent.follow_up(text)
         while not self.agent.done:
             self.agent.step()
-        return self.agent.state.answer
+        return self.agent.answer
 
     def stream(self, task: str) -> Iterator[Event]:
         """`for event in h.stream(task)`: the run's events, tokens included, as they happen.
@@ -162,10 +173,12 @@ class Harness:
         saved = self.saved_run
         if saved is None:
             raise RuntimeError("Nothing to resume: no unfinished run is saved")
-        self.agent.restore(saved, files=False)  # a new process: its Toolbox history is gone
+        self.agent.restore(
+            saved, files=False
+        )  # a new process: its Toolbox history is gone
         while not self.agent.done:
             self.agent.step()
-        return self.agent.state.answer
+        return self.agent.answer
 
     @property
     def saved_run(self) -> Checkpoint | None:
@@ -173,7 +186,9 @@ class Harness:
             return None
         return Checkpoint.load(self.checkpoint_path)
 
-    def add_helper(self, name: str, description: str, instructions: Sequence[str] = ()) -> Agent:
+    def add_helper(
+        self, name: str, description: str, instructions: Sequence[str] = ()
+    ) -> Agent:
         """Add a read-only sub-agent the main agent can delegate to, as a tool (stage 12).
 
         It shares the provider (and so the budget), the event bus and the
@@ -242,6 +257,7 @@ class Harness:
     def _autosave(self, event: Event) -> None:
         # Between the main agent's steps only (D117), not a helper's; a finished run
         # deletes the file so the next one starts fresh
+        assert self.checkpoint_path is not None  # only subscribed when it is set
         if event.depth > 0:
             return
         if isinstance(event, StateChanged) and not self.agent.done:

@@ -121,7 +121,9 @@ def test_hidden_tools_look_like_missing_tools(toolbox, tmp_path):
 
     result = view.execute(call("write_file", path="a.txt", content="x"))
 
-    assert result == view.execute(call("does_not_exist")).replace("does_not_exist", "write_file")
+    assert result == view.execute(call("does_not_exist")).replace(
+        "does_not_exist", "write_file"
+    )
     assert not (tmp_path / "a.txt").exists()
 
 
@@ -136,7 +138,9 @@ def test_the_real_toolbox_policy_still_applies(tmp_path):
     strict = Toolbox(default_tools(tmp_path))  # default policy: side effects denied
     view = ToolboxView(strict, allow={"write_file"})
 
-    assert view.execute(call("write_file", path="a.txt", content="x")).startswith("Permission denied")
+    assert view.execute(call("write_file", path="a.txt", content="x")).startswith(
+        "Permission denied"
+    )
 
 
 def test_read_only_view_hides_side_effects(toolbox):

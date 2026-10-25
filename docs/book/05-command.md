@@ -30,8 +30,9 @@ You chose declaration (D30):
 
 ```python
 class Tool:
-    side_effects = False   # read-only by default
+    side_effects = False  # read-only by default
     reversible = False
+
 
 class WriteFile(Tool):
     side_effects = True

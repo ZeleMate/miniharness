@@ -1,0 +1,11 @@
+# zizmor's settings. Stricter than its default, which lets `actions/*` be pinned
+# to a tag: here every `uses:` must name a full commit SHA.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "*": hash-pin
+  # Wants GitHub's newer `$/` syntax for this repo's own actions, which
+  # actionlint 1.7.12 rejects. Revisit when actionlint supports it.
+  self-repository:
+    disable: true

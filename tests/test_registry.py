@@ -30,14 +30,18 @@ def test_name_and_model():
 
 
 def test_only_the_first_colon_splits():
-    provider = create_provider("openrouter:deepseek/deepseek-chat:free", client=object())
+    provider = create_provider(
+        "openrouter:deepseek/deepseek-chat:free", client=object()
+    )
 
     assert provider.model == "deepseek/deepseek-chat:free"
 
 
 def test_kwargs_pass_through_to_the_constructor():
     client = object()
-    provider = create_provider("anthropic:claude-haiku-5-5", client=client, max_tokens=123)
+    provider = create_provider(
+        "anthropic:claude-haiku-5-5", client=client, max_tokens=123
+    )
 
     assert isinstance(provider, AnthropicProvider)
     assert provider.client is client
@@ -45,7 +49,10 @@ def test_kwargs_pass_through_to_the_constructor():
 
 
 def test_unknown_provider_lists_the_available_ones():
-    with pytest.raises(ValueError, match="Unknown provider 'nope'. Available: anthropic, mock, openrouter"):
+    with pytest.raises(
+        ValueError,
+        match="Unknown provider 'nope'. Available: anthropic, mock, openrouter",
+    ):
         create_provider("nope:model")
 
 
@@ -87,6 +94,8 @@ def test_an_empty_registry_knows_nothing():
 
 
 def test_a_factory_can_be_any_callable():
-    registry = ProviderRegistry({"scripted": lambda model="s": MockProvider([], model=model)})
+    registry = ProviderRegistry(
+        {"scripted": lambda model="s": MockProvider([], model=model)}
+    )
 
     assert registry.create("scripted:v2").model == "v2"

@@ -76,11 +76,17 @@ class _MemberTools:
         return execute_split(calls, self._is_team_call, self._team_call, self.inner)
 
     def _is_team_call(self, call: ToolCall) -> bool:
-        return call.name == "send_message" or (call.name == "approve" and self.member in self.team.finishers)
+        return call.name == "send_message" or (
+            call.name == "approve" and self.member in self.team.finishers
+        )
 
     def _team_call(self, call: ToolCall) -> str:
         if call.name == "send_message":
-            return self.team._send(self.member, call.arguments.get("to", ""), call.arguments.get("text", ""))
+            return self.team._send(
+                self.member,
+                call.arguments.get("to", ""),
+                call.arguments.get("text", ""),
+            )
         return self.team._approve(self.member)
 
 
@@ -92,9 +98,13 @@ class Team:
         finishers: set[str],
         max_turns: int = 8,
     ):
-        unknown = ({*routes} | {r for rs in routes.values() for r in rs} | finishers) - set(members)
+        unknown = (
+            {*routes} | {r for rs in routes.values() for r in rs} | finishers
+        ) - set(members)
         if unknown:
-            raise ValueError(f"Routes or finishers name unknown members: {sorted(unknown)}")
+            raise ValueError(
+                f"Routes or finishers name unknown members: {sorted(unknown)}"
+            )
         self.routes = routes
         self.finishers = finishers
         self.max_turns = max_turns
@@ -104,7 +114,9 @@ class Team:
             member = copy.copy(agent)
             member.name = name
             member.tools = _MemberTools(agent.tools, self, name)
-            member.messages = list(agent.messages)  # a shallow copy would share the list
+            member.messages = list(
+                agent.messages
+            )  # a shallow copy would share the list
             self.members[name] = member
         self.log: list[TeamMessage] = []
         self._last_received: dict[str, TeamMessage] = {}
@@ -156,8 +168,10 @@ class Team:
             while not member.done:
                 member.step()
             if isinstance(member.state, Stopped):
-                return member.state.answer  # e.g. the shared budget ran out: stop the team
-            last_answer = member.state.answer
+                return (
+                    member.state.answer
+                )  # e.g. the shared budget ran out: stop the team
+            last_answer = member.answer
             if self._result is not None:
                 return self._result
             queue.extend(self._outbox)

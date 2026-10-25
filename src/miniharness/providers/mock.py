@@ -1,8 +1,15 @@
 import re
-from typing import Iterator
+from collections.abc import Iterator
 
 from miniharness.providers.registry import register_provider
-from miniharness.types import Completed, LLMResponse, Message, StreamChunk, TextDelta, ToolSpec
+from miniharness.types import (
+    Completed,
+    LLMResponse,
+    Message,
+    StreamChunk,
+    TextDelta,
+    ToolSpec,
+)
 
 
 @register_provider("mock")
@@ -13,12 +20,18 @@ class MockProvider:
     `stream()` replays a response's text word by word, then the response itself.
     """
 
-    def __init__(self, responses: list[LLMResponse | Exception] | None = None, model: str = "mock"):
+    def __init__(
+        self,
+        responses: list[LLMResponse | Exception] | None = None,
+        model: str = "mock",
+    ):
         self.model = model
         self._responses = list(responses or [])
         self.calls: list[list[Message]] = []
 
-    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse:
         self.calls.append(list(messages))
         if not self._responses:
             raise RuntimeError("MockProvider ran out of scripted responses")
@@ -27,7 +40,9 @@ class MockProvider:
             raise item
         return item
 
-    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+    def stream(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> Iterator[StreamChunk]:
         response = self.complete(messages, tools)
         for word in re.findall(r"\S+\s*|\s+", response.message.content):
             yield TextDelta(word)

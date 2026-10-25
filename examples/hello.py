@@ -44,21 +44,47 @@ def main() -> None:
     load_dotenv()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-m", "--model", default="openrouter",
+        "-m",
+        "--model",
+        default="openrouter",
         help=f"provider[:model], provider one of: {', '.join(available_providers())}",
     )
-    parser.add_argument("--agent", choices=AGENT_TYPES, default="tool-use", help="agent type (Bridge)")
-    parser.add_argument("--budget", type=float, default=0.05, help="stop after spending this many USD")
-    parser.add_argument("--cache", action="store_true", help="replay identical requests from .cache/llm")
-    parser.add_argument("--fallback", help="provider[:model] to use if the main one fails or refuses")
+    parser.add_argument(
+        "--agent", choices=AGENT_TYPES, default="tool-use", help="agent type (Bridge)"
+    )
+    parser.add_argument(
+        "--budget", type=float, default=0.05, help="stop after spending this many USD"
+    )
+    parser.add_argument(
+        "--cache", action="store_true", help="replay identical requests from .cache/llm"
+    )
+    parser.add_argument(
+        "--fallback", help="provider[:model] to use if the main one fails or refuses"
+    )
     parser.add_argument("--trace", help="append every event to this JSONL file")
-    parser.add_argument("--checkpoint", help="autosave here; if it exists, resume the unfinished run")
-    parser.add_argument("--delegate", action="store_true", help="add a read-only 'researcher' sub-agent")
-    parser.add_argument("--stream", action="store_true", help="print the model's text as it arrives")
-    parser.add_argument("--read-only", action="store_true", help="hide tools that change anything")
-    parser.add_argument("--yes", action="store_true", help="approve every tool call that asks")
-    parser.add_argument("--rewind", action="store_true", help="undo all file changes after the run")
-    parser.add_argument("task", nargs="?", default="What is (17 * 23) + 4? Also, what time is it in UTC?")
+    parser.add_argument(
+        "--checkpoint", help="autosave here; if it exists, resume the unfinished run"
+    )
+    parser.add_argument(
+        "--delegate", action="store_true", help="add a read-only 'researcher' sub-agent"
+    )
+    parser.add_argument(
+        "--stream", action="store_true", help="print the model's text as it arrives"
+    )
+    parser.add_argument(
+        "--read-only", action="store_true", help="hide tools that change anything"
+    )
+    parser.add_argument(
+        "--yes", action="store_true", help="approve every tool call that asks"
+    )
+    parser.add_argument(
+        "--rewind", action="store_true", help="undo all file changes after the run"
+    )
+    parser.add_argument(
+        "task",
+        nargs="?",
+        default="What is (17 * 23) + 4? Also, what time is it in UTC?",
+    )
     args = parser.parse_args()
 
     h = Harness(
@@ -77,16 +103,25 @@ def main() -> None:
         agent_type=AGENT_TYPES[args.agent],
     )
     if args.delegate:
-        h.add_helper("researcher", "Reads files in the workspace and summarizes them.",
-                     ["Read files to answer. Reply with a short summary."])
-    print(f"[{type(h.agent).__name__} on {type(h.stack.base).__name__} / {h.provider.model}]")
+        h.add_helper(
+            "researcher",
+            "Reads files in the workspace and summarizes them.",
+            ["Read files to answer. Reply with a short summary."],
+        )
+    print(
+        f"[{type(h.agent).__name__} on {type(h.stack.base).__name__} / {h.provider.model}]"
+    )
 
     if (saved := h.saved_run) is not None:
-        print(f"  resuming from {args.checkpoint} ({saved.model_calls} model call(s) already made)")
+        print(
+            f"  resuming from {args.checkpoint} ({saved.model_calls} model call(s) already made)"
+        )
         answer = h.resume()
     else:
         answer = h.run(args.task)  # the console printer shows progress live
-    if not (args.stream and h.agent.state.name == "done"):  # a streamed answer was already shown
+    if not (
+        args.stream and h.agent.state.name == "done"
+    ):  # a streamed answer was already shown
         print(f"\n{answer}")
     print(f"\n{h.report()}")
 
@@ -94,7 +129,9 @@ def main() -> None:
         print(f"\n{len(h.changes)} change(s) in ./{h.workspace}/")
         if args.rewind:
             for command in h.rewind():
-                print(f"  undid {command.tool.name}({command.call.arguments.get('path')})")
+                print(
+                    f"  undid {command.tool.name}({command.call.arguments.get('path')})"
+                )
 
 
 if __name__ == "__main__":

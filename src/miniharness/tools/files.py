@@ -27,7 +27,9 @@ class ReadFile(Tool):
     description = "Read a UTF-8 text file from the workspace."
     parameters = {
         "type": "object",
-        "properties": {"path": {"type": "string", "description": "Path relative to the workspace"}},
+        "properties": {
+            "path": {"type": "string", "description": "Path relative to the workspace"}
+        },
         "required": ["path"],
     }
 
@@ -37,7 +39,9 @@ class ReadFile(Tool):
     def run(self, path: str) -> ToolResult:
         text = resolve_in_workspace(self.workspace, path).read_text(encoding="utf-8")
         if len(text) > MAX_READ_CHARS:
-            text = text[:MAX_READ_CHARS] + f"\n[truncated: file is {len(text)} characters]"
+            text = (
+                text[:MAX_READ_CHARS] + f"\n[truncated: file is {len(text)} characters]"
+            )
         return ToolResult(text)
 
 
@@ -71,13 +75,22 @@ class WriteFile(Tool):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         verb = "Overwrote" if previous is not None else "Created"
-        return ToolResult(f"{verb} {path} ({len(content)} characters)", _WriteUndo(target, previous, content))
+        return ToolResult(
+            f"{verb} {path} ({len(content)} characters)",
+            _WriteUndo(target, previous, content),
+        )
 
     def undo(self, undo_info: _WriteUndo) -> None:
-        current = undo_info.target.read_text(encoding="utf-8") if undo_info.target.exists() else None
+        current = (
+            undo_info.target.read_text(encoding="utf-8")
+            if undo_info.target.exists()
+            else None
+        )
         if current != undo_info.written:
             # Someone changed the file after us; restoring would destroy their edit
-            raise RuntimeError(f"{undo_info.target.name} changed since it was written; not undoing")
+            raise RuntimeError(
+                f"{undo_info.target.name} changed since it was written; not undoing"
+            )
         if undo_info.previous is None:
             undo_info.target.unlink()
         else:

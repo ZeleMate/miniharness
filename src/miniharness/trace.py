@@ -19,9 +19,10 @@ the nodes. The flip side: adding a node type touches every visitor.
 import argparse
 import html
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 # --- Nodes ---------------------------------------------------------------------------
 
@@ -71,9 +72,13 @@ class RunNode:
     agent: str
     depth: int
     task: str
-    state: str = "unfinished"  # "done" / "stopped", or unfinished if the trace ends early
+    state: str = (
+        "unfinished"  # "done" / "stopped", or unfinished if the trace ends early
+    )
     answer: str = ""
-    children: list[ModelCallNode | ToolCallNode | MessageNode] = field(default_factory=list)
+    children: list[ModelCallNode | ToolCallNode | MessageNode] = field(
+        default_factory=list
+    )
 
     def accept(self, visitor: "TraceVisitor") -> None:
         visitor.visit_run(self)
@@ -100,12 +105,16 @@ def build_trace(records: Iterable[dict[str, Any]]) -> Trace:
     """
     trace = Trace()
     open_runs: list[RunNode] = []
-    pending: list[list[RunNode]] = []  # sub-runs waiting for their tool call, per open run
+    pending: list[
+        list[RunNode]
+    ] = []  # sub-runs waiting for their tool call, per open run
 
     for r in records:
         kind = r["event"]
         if kind == "RunStarted":
-            run = RunNode(agent=r.get("agent", ""), depth=r.get("depth", 0), task=r["task"])
+            run = RunNode(
+                agent=r.get("agent", ""), depth=r.get("depth", 0), task=r["task"]
+            )
             if open_runs and run.depth > open_runs[-1].depth:
                 pending[-1].append(run)
             else:
@@ -208,7 +217,11 @@ class CostSummary(TraceVisitor):
         s.input_tokens += node.input_tokens
         s.output_tokens += node.output_tokens
         s.seconds += node.duration_s
-        s.cost_usd = None if s.cost_usd is None or node.cost_usd is None else s.cost_usd + node.cost_usd
+        s.cost_usd = (
+            None
+            if s.cost_usd is None or node.cost_usd is None
+            else s.cost_usd + node.cost_usd
+        )
 
     def visit_tool(self, node: ToolCallNode) -> None:
         s = self._stats(node.agent)
@@ -226,12 +239,18 @@ class CostSummary(TraceVisitor):
             t.tool_calls += s.tool_calls
             t.denied += s.denied
             t.seconds += s.seconds
-            t.cost_usd = None if t.cost_usd is None or s.cost_usd is None else t.cost_usd + s.cost_usd
+            t.cost_usd = (
+                None
+                if t.cost_usd is None or s.cost_usd is None
+                else t.cost_usd + s.cost_usd
+            )
         return t
 
     def table(self) -> str:
         rows = [*self.by_agent.items(), ("total", self.total())]
-        lines = [f"{'agent':<14}{'calls':>6}{'tokens in/out':>17}{'cost':>12}{'tools':>7}{'denied':>8}{'time':>8}"]
+        lines = [
+            f"{'agent':<14}{'calls':>6}{'tokens in/out':>17}{'cost':>12}{'tools':>7}{'denied':>8}{'time':>8}"
+        ]
         for name, s in rows:
             lines.append(
                 f"{name:<14}{s.model_calls:>6}{f'{s.input_tokens} / {s.output_tokens}':>17}"
@@ -265,15 +284,27 @@ class HtmlReport(TraceVisitor):
         self.parts.append("</details>")
 
     def visit_model(self, node: ModelCallNode) -> None:
-        what = f"{node.tool_calls} tool call(s)" if node.tool_calls else node.stop_reason
+        what = (
+            f"{node.tool_calls} tool call(s)" if node.tool_calls else node.stop_reason
+        )
         self.parts.append(
             f"<div class='model'>model: {_e(what)} <span class='meta'>{node.input_tokens} in / "
             f"{node.output_tokens} out · {_money(node.cost_usd)} · {node.duration_s:.1f}s</span></div>"
         )
 
     def visit_tool(self, node: ToolCallNode) -> None:
-        cls = "tool denied" if node.verdict not in (None, "allow") else "tool failed" if node.failed else "tool"
-        by = f" <span class='meta'>(by {_e(node.policy or '')})</span>" if "denied" in cls else ""
+        cls = (
+            "tool denied"
+            if node.verdict not in (None, "allow")
+            else "tool failed"
+            if node.failed
+            else "tool"
+        )
+        by = (
+            f" <span class='meta'>(by {_e(node.policy or '')})</span>"
+            if "denied" in cls
+            else ""
+        )
         self.parts.append(
             f"<div class='{cls}'><code>{_e(node.name)}({_e(json.dumps(node.arguments))})</code>{by}"
             f"<pre>{_e(node.output)}</pre>"
@@ -282,7 +313,9 @@ class HtmlReport(TraceVisitor):
         self.parts.append("</div>")
 
     def visit_message(self, node: MessageNode) -> None:
-        self.parts.append(f"<div class='message'>── {_e(node.sender)} → {_e(node.to)}: {_e(node.text)}</div>")
+        self.parts.append(
+            f"<div class='message'>── {_e(node.sender)} → {_e(node.to)}: {_e(node.text)}</div>"
+        )
 
     def page(self, title: str = "miniharness trace") -> str:
         return _PAGE.format(title=_e(title), body="\n".join(self.parts))
@@ -326,7 +359,9 @@ _PAGE = """<!doctype html>
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Summarize a JSONL trace, optionally as HTML.")
+    parser = argparse.ArgumentParser(
+        description="Summarize a JSONL trace, optionally as HTML."
+    )
     parser.add_argument("trace", help="a JSONL file written by JsonlTracer (--trace)")
     parser.add_argument("--html", help="write an HTML report here")
     args = parser.parse_args()
@@ -338,7 +373,9 @@ def main() -> None:
     if args.html:
         report = HtmlReport()
         trace.accept(report)
-        Path(args.html).write_text(report.page(f"Trace: {Path(args.trace).name}"), encoding="utf-8")
+        Path(args.html).write_text(
+            report.page(f"Trace: {Path(args.trace).name}"), encoding="utf-8"
+        )
         print(f"\nWrote {args.html}")
 
 

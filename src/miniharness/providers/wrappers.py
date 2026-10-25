@@ -21,9 +21,9 @@ default would have silently skipped the budget.
 import hashlib
 import json
 import pickle
+from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
-from typing import Iterator
 
 import anthropic
 import openai
@@ -32,7 +32,15 @@ from miniharness.errors import BudgetExceeded, CircuitOpenError, MalformedRespon
 from miniharness.providers.base import Provider
 from miniharness.providers.proxies import LazyProvider
 from miniharness.providers.streaming import as_stream, stream_from
-from miniharness.types import Completed, LLMResponse, Message, StreamChunk, TextDelta, ToolSpec, Usage
+from miniharness.types import (
+    Completed,
+    LLMResponse,
+    Message,
+    StreamChunk,
+    TextDelta,
+    ToolSpec,
+    Usage,
+)
 
 
 class _Wrapper:
@@ -43,7 +51,14 @@ class _Wrapper:
     def model(self) -> str:
         return self.inner.model
 
-    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse:
+        raise NotImplementedError  # every wrapper overrides it
+
+    def stream(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> Iterator[StreamChunk]:
         # Safe default: this wrapper's own complete(), replayed. Correct, but not live
         yield from as_stream(self.complete(messages, tools))
 
@@ -55,7 +70,9 @@ class UsageTracker(_Wrapper):
         super().__init__(inner)
         self.calls: list[Usage] = []
 
-    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse:
         try:
             response = self.inner.complete(messages, tools)
         except MalformedResponseError as e:
@@ -65,7 +82,9 @@ class UsageTracker(_Wrapper):
         self.calls.append(response.usage or Usage())
         return response
 
-    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+    def stream(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> Iterator[StreamChunk]:
         started = recorded = False
         try:
             for chunk in stream_from(self.inner, messages, tools):
@@ -106,11 +125,15 @@ class BudgetGuard(_Wrapper):
         self.tracker = tracker
         self.limit_usd = limit_usd
 
-    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse:
         self._check()
         return self.inner.complete(messages, tools)
 
-    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+    def stream(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> Iterator[StreamChunk]:
         self._check()  # before the first token, like before a call
         yield from stream_from(self.inner, messages, tools)
 
@@ -118,7 +141,9 @@ class BudgetGuard(_Wrapper):
         spent = self.tracker.total.cost_usd
         if spent is None:
             # Fail closed: a budget we can't measure is a budget we can't enforce
-            raise BudgetExceeded("Cost of an earlier call is unknown; can't enforce the budget")
+            raise BudgetExceeded(
+                "Cost of an earlier call is unknown; can't enforce the budget"
+            )
         if spent >= self.limit_usd:
             raise BudgetExceeded(f"Spent ${spent:.6f} of ${self.limit_usd:.6f}")
 
@@ -137,7 +162,9 @@ class Retry(_Wrapper):
         self.on = on
         self.retries = 0
 
-    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse:
         for attempt in range(1, self.attempts + 1):
             try:
                 return self.inner.complete(messages, tools)
@@ -147,7 +174,9 @@ class Retry(_Wrapper):
                 self.retries += 1
         raise AssertionError("unreachable")
 
-    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+    def stream(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> Iterator[StreamChunk]:
         """Retries only while no text has been passed on: the consumer can't un-see tokens."""
         for attempt in range(1, self.attempts + 1):
             shown = False
@@ -176,28 +205,30 @@ class DiskCache(_Wrapper):
         self.hits = 0
         self.misses = 0
 
-    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse:
         file = self.path / f"{self.key(messages, tools)}.pkl"
         if file.exists():
             self.hits += 1
-            return pickle.loads(file.read_bytes())
+            return _load(file)
         response = self.inner.complete(messages, tools)
         self.misses += 1
-        self.path.mkdir(parents=True, exist_ok=True)
-        file.write_bytes(pickle.dumps(response))
+        _store(file, response)
         return response
 
-    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+    def stream(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> Iterator[StreamChunk]:
         file = self.path / f"{self.key(messages, tools)}.pkl"
         if file.exists():
             self.hits += 1
-            yield from as_stream(pickle.loads(file.read_bytes()))  # a hit replays all at once
+            yield from as_stream(_load(file))  # a hit replays all at once
             return
         for chunk in stream_from(self.inner, messages, tools):
             if isinstance(chunk, Completed):
                 self.misses += 1
-                self.path.mkdir(parents=True, exist_ok=True)
-                file.write_bytes(pickle.dumps(chunk.response))
+                _store(file, chunk.response)
             yield chunk
 
     @property
@@ -214,12 +245,31 @@ class DiskCache(_Wrapper):
             "tools": tools,
             # `raw` is left out: it's provider-specific and derived from the rest
             "messages": [
-                [m.role, m.content, [[tc.id, tc.name, tc.arguments] for tc in m.tool_calls], m.tool_call_id]
+                [
+                    m.role,
+                    m.content,
+                    [[tc.id, tc.name, tc.arguments] for tc in m.tool_calls],
+                    m.tool_call_id,
+                ]
                 for m in messages
             ],
         }
         blob = json.dumps(payload, sort_keys=True, default=str)
         return hashlib.sha256(blob.encode()).hexdigest()
+
+
+# The only pickle in the codebase, accepted for a dev-only cache in a directory the
+# caller controls (DECISIONS.md D51, and the review's fix that keeps it out of the
+# workspace). Semgrep's avoid-pickle rule is silenced here and nowhere else.
+def _load(file: Path) -> LLMResponse:
+    # nosemgrep: python.lang.security.deserialization.pickle.avoid-pickle
+    return pickle.loads(file.read_bytes())
+
+
+def _store(file: Path, response: LLMResponse) -> None:
+    file.parent.mkdir(parents=True, exist_ok=True)
+    # nosemgrep: python.lang.security.deserialization.pickle.avoid-pickle
+    file.write_bytes(pickle.dumps(response))
 
 
 def _innermost(provider: Provider) -> Provider:
@@ -281,7 +331,9 @@ class FallbackChain:
     def model(self) -> str:
         return self.providers[0].model
 
-    def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse:
         last = len(self.providers) - 1
         billed: list[Usage] = []  # usage of the links that passed the request on
         for i, provider in enumerate(self.providers):
@@ -302,7 +354,9 @@ class FallbackChain:
             return _add_billed(response, billed)
         raise AssertionError("unreachable")
 
-    def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
+    def stream(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> Iterator[StreamChunk]:
         """Falls back only while no text has been passed on, for the same reason as Retry.
 
         A refusal is detected at Completed, so a refusal that already streamed its
@@ -312,7 +366,9 @@ class FallbackChain:
         billed: list[Usage] = []  # usage of the links that passed the request on
         for i, provider in enumerate(self.providers):
             shown = False
-            response = None  # Completed is held back until we know we're keeping this answer
+            response = (
+                None  # Completed is held back until we know we're keeping this answer
+            )
             try:
                 for chunk in stream_from(provider, messages, tools):
                     if isinstance(chunk, TextDelta):
@@ -329,7 +385,12 @@ class FallbackChain:
                 continue
             if response is None:
                 raise RuntimeError("Stream ended without a Completed chunk")
-            if self.on_refusal and response.stop_reason == "refusal" and i < last and not shown:
+            if (
+                self.on_refusal
+                and response.stop_reason == "refusal"
+                and i < last
+                and not shown
+            ):
                 self.failures.append((provider, "refusal"))
                 billed.append(response.usage or Usage())
                 continue
@@ -355,7 +416,9 @@ def _total(usage: Usage | None, billed: list[Usage]) -> Usage | None:
 
 
 def _add_billed(response: LLMResponse, billed: list[Usage]) -> LLMResponse:
-    return replace(response, usage=_total(response.usage, billed)) if billed else response
+    return (
+        replace(response, usage=_total(response.usage, billed)) if billed else response
+    )
 
 
 def _charge_earlier_links(error: Exception, billed: list[Usage]) -> None:
@@ -366,4 +429,3 @@ def _charge_earlier_links(error: Exception, billed: list[Usage]) -> None:
     """
     if billed and isinstance(error, MalformedResponseError):
         error.usage = _total(error.usage, billed)
-

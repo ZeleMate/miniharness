@@ -44,7 +44,12 @@ class PlannerAgent(Agent):
     def plan_request(self) -> str:
         """The planning call gets no tools (D194), so the request names them instead."""
         specs = self.tools.specs()
-        tools = "\n".join(f"- {name}: {spec['description']}" for name, spec in specs.items()) or "(none)"
+        tools = (
+            "\n".join(
+                f"- {name}: {spec['description']}" for name, spec in specs.items()
+            )
+            or "(none)"
+        )
         return PLAN_REQUEST.format(tools=tools)
 
 

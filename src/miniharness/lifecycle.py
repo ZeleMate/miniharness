@@ -23,12 +23,21 @@ round) stream, count toward `max_steps` and emit ModelCalled like the main loop.
 """
 
 import time
-from typing import TYPE_CHECKING, Any, Generator, Iterator
+from collections.abc import Generator, Iterator
+from typing import TYPE_CHECKING, Any
 
 from miniharness.errors import StopRun
 from miniharness.events import ModelCalled, TokenStreamed
 from miniharness.providers import stream_from
-from miniharness.types import Completed, LLMResponse, Message, StreamChunk, TextDelta, ToolCall, ToolSpec
+from miniharness.types import (
+    Completed,
+    LLMResponse,
+    Message,
+    StreamChunk,
+    TextDelta,
+    ToolCall,
+    ToolSpec,
+)
 
 if TYPE_CHECKING:
     from miniharness.agent import Agent
@@ -71,7 +80,9 @@ class Thinking(AgentState):
         agent.messages.append(response.message)
         if response.stop_reason == "tool_calls":
             return ActingOnTools(response.message.tool_calls)
-        return agent.after_answer(response)  # Done, unless the agent type wants another round
+        return agent.after_answer(
+            response
+        )  # Done, unless the agent type wants another round
 
 
 class Planning(AgentState):
@@ -117,10 +128,18 @@ def model_call(
     agent.model_calls += 1
     started = time.monotonic()
     if agent.stream:
-        chunks = agent.think_stream(messages) if tools is None else stream_from(agent.provider, messages, tools)
+        chunks = (
+            agent.think_stream(messages)
+            if tools is None
+            else stream_from(agent.provider, messages, tools)
+        )
         response = yield from _consume_stream(agent, chunks)
     else:
-        response = agent.think(messages) if tools is None else agent.provider.complete(messages, tools)
+        response = (
+            agent.think(messages)
+            if tools is None
+            else agent.provider.complete(messages, tools)
+        )
     agent.events.emit(
         ModelCalled(
             model=agent.provider.model,
@@ -133,7 +152,9 @@ def model_call(
     return response
 
 
-def _consume_stream(agent: "Agent", chunks: Iterator[StreamChunk]) -> Generator[None, None, LLMResponse]:
+def _consume_stream(
+    agent: "Agent", chunks: Iterator[StreamChunk]
+) -> Generator[None, None, LLMResponse]:
     response = None
     try:
         for chunk in chunks:  # to the end, not just to Completed (see collect())
@@ -160,7 +181,13 @@ class ActingOnTools(AgentState):
         self.calls = calls
 
     def snapshot(self):
-        return {"name": self.name, "calls": [{"id": c.id, "name": c.name, "arguments": c.arguments} for c in self.calls]}
+        return {
+            "name": self.name,
+            "calls": [
+                {"id": c.id, "name": c.name, "arguments": c.arguments}
+                for c in self.calls
+            ],
+        }
 
     def step(self, agent):
         agent.messages.extend(agent.act(self.calls))

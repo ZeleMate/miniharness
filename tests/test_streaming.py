@@ -33,7 +33,9 @@ HELLO = [Message(role="user", content="hi")]
 
 
 def reply(text="ok", cost=0.01, stop="end"):
-    return LLMResponse(Message(role="assistant", content=text), stop, Usage(10, 5, cost))
+    return LLMResponse(
+        Message(role="assistant", content=text), stop, Usage(10, 5, cost)
+    )
 
 
 def texts(chunks):
@@ -73,7 +75,12 @@ def connection_error():
 
 
 def delta_chunk(content=None, tool_calls=None, finish=None):
-    return NS(choices=[NS(delta=NS(content=content, tool_calls=tool_calls), finish_reason=finish)], usage=None)
+    return NS(
+        choices=[
+            NS(delta=NS(content=content, tool_calls=tool_calls), finish_reason=finish)
+        ],
+        usage=None,
+    )
 
 
 def tool_fragment(index, id=None, name=None, arguments=None):
@@ -110,7 +117,14 @@ class FakeOpenAI:
 
 
 def test_openai_stream_yields_text_then_the_full_response():
-    client = FakeOpenAI([delta_chunk("Hel"), delta_chunk("lo"), delta_chunk(finish="stop"), usage_chunk()])
+    client = FakeOpenAI(
+        [
+            delta_chunk("Hel"),
+            delta_chunk("lo"),
+            delta_chunk(finish="stop"),
+            usage_chunk(),
+        ]
+    )
 
     chunks = list(OpenRouterProvider("m", client).stream(HELLO, {}))
 
@@ -127,10 +141,18 @@ def test_openai_stream_yields_text_then_the_full_response():
 def test_openai_stream_assembles_tool_calls_from_fragments():
     client = FakeOpenAI(
         [
-            delta_chunk(tool_calls=[tool_fragment(0, id="c1", name="add", arguments="")]),
-            delta_chunk(tool_calls=[tool_fragment(1, id="c2", name="current_time", arguments="{}")]),
+            delta_chunk(
+                tool_calls=[tool_fragment(0, id="c1", name="add", arguments="")]
+            ),
+            delta_chunk(
+                tool_calls=[
+                    tool_fragment(1, id="c2", name="current_time", arguments="{}")
+                ]
+            ),
             delta_chunk(tool_calls=[tool_fragment(0, arguments='{"a": 1, ')]),
-            delta_chunk(tool_calls=[tool_fragment(0, arguments='"b": 2}')], finish="tool_calls"),
+            delta_chunk(
+                tool_calls=[tool_fragment(0, arguments='"b": 2}')], finish="tool_calls"
+            ),
             usage_chunk(),
         ]
     )
@@ -149,11 +171,21 @@ def test_openai_stream_assembles_tool_calls_from_fragments():
 def test_openai_stream_length_means_max_tokens():
     client = FakeOpenAI([delta_chunk("cut", finish="length")])
 
-    assert collect(OpenRouterProvider("m", client).stream(HELLO, {})).stop_reason == "max_tokens"
+    assert (
+        collect(OpenRouterProvider("m", client).stream(HELLO, {})).stop_reason
+        == "max_tokens"
+    )
 
 
 def test_openai_stream_with_bad_tool_json_is_malformed_and_carries_usage():
-    client = FakeOpenAI([delta_chunk(tool_calls=[tool_fragment(0, id="c", name="add", arguments="{oops")]), usage_chunk()])
+    client = FakeOpenAI(
+        [
+            delta_chunk(
+                tool_calls=[tool_fragment(0, id="c", name="add", arguments="{oops")]
+            ),
+            usage_chunk(),
+        ]
+    )
 
     with pytest.raises(MalformedResponseError) as e:
         list(OpenRouterProvider("m", client).stream(HELLO, {}))
@@ -191,7 +223,11 @@ class FakeMessageStream:
 
 def test_anthropic_stream_yields_text_then_the_priced_response():
     blocks = [NS(type="text", text="Hi there")]
-    final = NS(content=blocks, stop_reason="end_turn", usage=NS(input_tokens=1_000_000, output_tokens=0))
+    final = NS(
+        content=blocks,
+        stop_reason="end_turn",
+        usage=NS(input_tokens=1_000_000, output_tokens=0),
+    )
     manager = FakeMessageStream(["Hi", " there"], final)
     requests = []
     client = NS(messages=NS(stream=lambda **kw: requests.append(kw) or manager))
@@ -229,7 +265,9 @@ def test_stream_from_replays_complete_for_providers_without_stream():
 
     provider = OnlyComplete()
     stream = stream_from(provider, HELLO, {})
-    assert provider.calls == 0  # lazy: nothing happens until the first chunk is asked for
+    assert (
+        provider.calls == 0
+    )  # lazy: nothing happens until the first chunk is asked for
 
     chunks = list(stream)
     assert chunks == [TextDelta("all at once"), Completed(chunks[-1].response)]
@@ -247,11 +285,16 @@ def test_wrapper_default_stream_goes_through_its_own_complete():
     class Shout(_Wrapper):  # a wrapper that knows nothing about streaming
         def complete(self, messages, tools):
             r = self.inner.complete(messages, tools)
-            return LLMResponse(Message(role="assistant", content=r.message.content.upper()), r.stop_reason)
+            return LLMResponse(
+                Message(role="assistant", content=r.message.content.upper()),
+                r.stop_reason,
+            )
 
     chunks = list(Shout(MockProvider([reply("quiet please")])).stream(HELLO, {}))
 
-    assert chunks[0] == TextDelta("QUIET PLEASE")  # its behavior applied; not live, but correct
+    assert chunks[0] == TextDelta(
+        "QUIET PLEASE"
+    )  # its behavior applied; not live, but correct
 
 
 def test_tracker_records_the_usage_of_a_stream():
@@ -287,7 +330,9 @@ def test_budget_checks_before_the_stream_starts():
 
 
 def test_retry_restarts_a_stream_that_failed_before_any_text():
-    provider = Scripted([MalformedResponseError("bad json")], [TextDelta("ok"), Completed(reply())])
+    provider = Scripted(
+        [MalformedResponseError("bad json")], [TextDelta("ok"), Completed(reply())]
+    )
     retry = Retry(provider)
 
     assert texts(retry.stream(HELLO, {})) == "ok"
@@ -295,20 +340,25 @@ def test_retry_restarts_a_stream_that_failed_before_any_text():
 
 
 def test_retry_does_not_restart_a_stream_that_already_showed_text():
-    provider = Scripted([TextDelta("half"), MalformedResponseError("bad json")], [TextDelta("ok"), Completed(reply())])
+    provider = Scripted(
+        [TextDelta("half"), MalformedResponseError("bad json")],
+        [TextDelta("ok"), Completed(reply())],
+    )
     retry = Retry(provider)
     seen = []
 
     with pytest.raises(MalformedResponseError):
         for chunk in retry.stream(HELLO, {}):
-            seen.append(chunk)
+            seen.append(chunk)  # noqa: PERF402  keeps what arrived before the raise
     assert seen == [TextDelta("half")]  # retrying would have shown "halfok"
     assert retry.retries == 0
 
 
 def test_fallback_switches_before_the_first_token():
     main = Scripted([connection_error()], model="main")
-    backup = Scripted([TextDelta("from backup"), Completed(reply("from backup"))], model="backup")
+    backup = Scripted(
+        [TextDelta("from backup"), Completed(reply("from backup"))], model="backup"
+    )
     chain = FallbackChain([main, backup])
 
     assert texts(chain.stream(HELLO, {})) == "from backup"
@@ -336,23 +386,37 @@ def test_fallback_skips_a_refusal_that_streamed_no_text():
 
 def test_a_streamed_answer_after_a_skipped_refusal_includes_its_cost():
     main = Scripted([Completed(reply("", cost=0.02, stop="refusal"))], model="main")
-    backup = Scripted([TextDelta("sure"), Completed(reply("sure", cost=0.01))], model="backup")
+    backup = Scripted(
+        [TextDelta("sure"), Completed(reply("sure", cost=0.01))], model="backup"
+    )
 
-    assert collect(FallbackChain([main, backup]).stream(HELLO, {})).usage == Usage(20, 10, pytest.approx(0.03))
+    assert collect(FallbackChain([main, backup]).stream(HELLO, {})).usage == Usage(
+        20, 10, pytest.approx(0.03)
+    )
 
 
 def test_a_streamed_malformed_reply_that_was_skipped_is_billed():
-    main = Scripted([MalformedResponseError("bad json", Usage(7, 7, 0.05))], model="main")
+    main = Scripted(
+        [MalformedResponseError("bad json", Usage(7, 7, 0.05))], model="main"
+    )
     backup = Scripted([Completed(reply(cost=0.01))], model="backup")
 
-    assert collect(FallbackChain([main, backup]).stream(HELLO, {})).usage.cost_usd == pytest.approx(0.06)
+    assert collect(
+        FallbackChain([main, backup]).stream(HELLO, {})
+    ).usage.cost_usd == pytest.approx(0.06)
 
 
 def test_fallback_keeps_a_refusal_whose_text_was_already_shown():
-    main = Scripted([TextDelta("I can't"), Completed(reply("I can't", stop="refusal"))], model="main")
+    main = Scripted(
+        [TextDelta("I can't"), Completed(reply("I can't", stop="refusal"))],
+        model="main",
+    )
     backup = Scripted([Completed(reply())], model="backup")
 
-    assert collect(FallbackChain([main, backup]).stream(HELLO, {})).stop_reason == "refusal"
+    assert (
+        collect(FallbackChain([main, backup]).stream(HELLO, {})).stop_reason
+        == "refusal"
+    )
     assert backup.started == 0
 
 
@@ -411,7 +475,12 @@ def test_wrapper_stack_streams_live_end_to_end(tmp_path):
 
     chunks = list(provider.stream(HELLO, {}))
 
-    assert [c.text for c in chunks[:-1]] == ["a ", "b ", "c ", "d"]  # still word by word
+    assert [c.text for c in chunks[:-1]] == [
+        "a ",
+        "b ",
+        "c ",
+        "d",
+    ]  # still word by word
     assert tracker.calls == [Usage(10, 5, 0.01)]
 
 
@@ -419,8 +488,12 @@ def test_breaker_sees_the_success_of_a_stream_consumed_by_collect_or_an_agent():
     from miniharness import Agent
     from miniharness.tools import Toolbox
 
-    provider = Scripted([connection_error()], [TextDelta("ok"), Completed(reply())], [connection_error()],
-                        [Completed(reply())])
+    provider = Scripted(
+        [connection_error()],
+        [TextDelta("ok"), Completed(reply())],
+        [connection_error()],
+        [Completed(reply())],
+    )
     breaker = CircuitBreaker(provider, threshold=2)
 
     with pytest.raises(openai.APIConnectionError):
@@ -429,6 +502,8 @@ def test_breaker_sees_the_success_of_a_stream_consumed_by_collect_or_an_agent():
     with pytest.raises(openai.APIConnectionError):
         Agent(breaker, tools=Toolbox([]), stream=True).run("hi")
 
-    assert breaker.state.name == "closed"  # ...so these were never two failures in a row
+    assert (
+        breaker.state.name == "closed"
+    )  # ...so these were never two failures in a row
     Agent(breaker, tools=Toolbox([]), stream=True).run("hi")
     assert breaker.state.failures == 0

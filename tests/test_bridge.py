@@ -4,24 +4,44 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from miniharness import Agent, Harness, LLMResponse, Message, PlannerAgent, ReviewerAgent, ToolCall
+from miniharness import (
+    Agent,
+    Harness,
+    LLMResponse,
+    Message,
+    PlannerAgent,
+    ReviewerAgent,
+    ToolCall,
+)
 from miniharness.agent_types import EXECUTE_REQUEST, REVIEW_REQUEST
 from miniharness.events import EventBus, ModelCalled, StateChanged, TokenStreamed
-from miniharness.providers import AnthropicProvider, MockProvider, OpenRouterProvider, UsageTracker
+from miniharness.providers import (
+    AnthropicProvider,
+    MockProvider,
+    OpenRouterProvider,
+    UsageTracker,
+)
 from miniharness.tools import Toolbox, default_tools
 from miniharness.types import Usage
 
 
 def call(name, **arguments):
     return LLMResponse(
-        Message(role="assistant", tool_calls=[ToolCall(id=f"c-{name}", name=name, arguments=arguments)]),
+        Message(
+            role="assistant",
+            tool_calls=[ToolCall(id=f"c-{name}", name=name, arguments=arguments)],
+        ),
         "tool_calls",
         Usage(10, 5, cost_usd=0.01),
     )
 
 
 def answer(text, stop_reason="end"):
-    return LLMResponse(Message(role="assistant", content=text), stop_reason, Usage(10, 5, cost_usd=0.01))
+    return LLMResponse(
+        Message(role="assistant", content=text),
+        stop_reason,
+        Usage(10, 5, cost_usd=0.01),
+    )
 
 
 class RecordingProvider(MockProvider):
@@ -46,7 +66,9 @@ def states(bus):
 
 
 def test_planner_plans_without_tools_then_runs_the_normal_loop():
-    provider = RecordingProvider([answer("1. Add the numbers."), call("add", a=2, b=3), answer("5")])
+    provider = RecordingProvider(
+        [answer("1. Add the numbers."), call("add", a=2, b=3), answer("5")]
+    )
     agent = PlannerAgent(provider, system_prompt="sys")
     seen = states(agent.events)
 
@@ -70,14 +92,28 @@ def test_the_plan_request_is_shown_to_the_model_but_not_kept():
     agent = PlannerAgent(provider, system_prompt="sys")
     agent.run("task")
 
-    assert provider.calls[0][-1].role == "user" and "numbered plan" in provider.calls[0][-1].content
-    assert [m.role for m in agent.messages] == ["system", "user", "assistant", "user", "assistant"]
+    assert (
+        provider.calls[0][-1].role == "user"
+        and "numbered plan" in provider.calls[0][-1].content
+    )
+    assert [m.role for m in agent.messages] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+    ]
 
 
 def test_a_plan_with_tool_calls_is_kept_as_text_only():
     # A provider that ignores the empty tool list must not leave an unanswered tool call behind
     sneaky = LLMResponse(
-        Message(role="assistant", content="I'll add.", tool_calls=[ToolCall("x", "add", {"a": 1, "b": 1})], raw="raw"),
+        Message(
+            role="assistant",
+            content="I'll add.",
+            tool_calls=[ToolCall("x", "add", {"a": 1, "b": 1})],
+            raw="raw",
+        ),
         "tool_calls",
     )
     agent = PlannerAgent(MockProvider([sneaky, answer("2")]))
@@ -95,13 +131,17 @@ def test_planning_counts_toward_max_steps_and_emits_model_called():
     agent.run("task")
     assert len(calls) == 2 and agent.model_calls == 2
 
-    agent = PlannerAgent(MockProvider([answer("plan"), call("add", a=1, b=1)]), max_steps=2)
+    agent = PlannerAgent(
+        MockProvider([answer("plan"), call("add", a=1, b=1)]), max_steps=2
+    )
     with pytest.raises(RuntimeError, match="within 2 steps"):
         agent.run("task")
 
 
 def test_the_plan_streams_like_any_other_model_call():
-    agent = PlannerAgent(MockProvider([answer("Step one."), answer("Done.")]), stream=True)
+    agent = PlannerAgent(
+        MockProvider([answer("Step one."), answer("Done.")]), stream=True
+    )
     tokens = [e.text for e in agent.iter_run("task") if isinstance(e, TokenStreamed)]
     assert "".join(tokens) == "Step one.Done."
 
@@ -112,7 +152,11 @@ def test_a_planner_checkpointed_while_planning_resumes_by_planning():
     saved = agent.checkpoint()
     assert saved.state == {"name": "planning"}
 
-    clone = agent.fork(saved, provider=MockProvider([answer("other plan"), answer("other")]), tools=Toolbox(default_tools()))
+    clone = agent.fork(
+        saved,
+        provider=MockProvider([answer("other plan"), answer("other")]),
+        tools=Toolbox(default_tools()),
+    )
     assert isinstance(clone, PlannerAgent)
     while not clone.done:
         clone.step()
@@ -120,7 +164,9 @@ def test_a_planner_checkpointed_while_planning_resumes_by_planning():
 
 
 def test_follow_up_continues_without_a_new_plan():
-    agent = PlannerAgent(MockProvider([answer("plan"), answer("first"), answer("second")]))
+    agent = PlannerAgent(
+        MockProvider([answer("plan"), answer("first"), answer("second")])
+    )
     agent.run("task")
     agent.follow_up("and then?")
     seen = states(agent.events)
@@ -143,7 +189,9 @@ def test_reviewer_reviews_the_draft_once_and_returns_the_revision():
 
 
 def test_the_review_round_can_use_tools():
-    provider = MockProvider([answer("5"), call("add", a=2, b=2), answer("4, corrected")])
+    provider = MockProvider(
+        [answer("5"), call("add", a=2, b=2), answer("4, corrected")]
+    )
     agent = ReviewerAgent(provider)
     seen = states(agent.events)
 
@@ -159,7 +207,9 @@ def test_an_incomplete_answer_is_not_reviewed(stop_reason):
 
 
 def test_each_follow_up_turn_is_reviewed_again():
-    agent = ReviewerAgent(MockProvider([answer("d1"), answer("f1"), answer("d2"), answer("f2")]))
+    agent = ReviewerAgent(
+        MockProvider([answer("d1"), answer("f1"), answer("d2"), answer("f2")])
+    )
     agent.run("task")
     agent.follow_up("more")
     while not agent.done:
@@ -173,7 +223,11 @@ def test_a_reviewer_restored_mid_review_does_not_review_twice():
     agent.step()  # draft -> review requested
     saved = agent.checkpoint()
 
-    clone = agent.fork(saved, provider=MockProvider([answer("final from fork")]), tools=Toolbox(default_tools()))
+    clone = agent.fork(
+        saved,
+        provider=MockProvider([answer("final from fork")]),
+        tools=Toolbox(default_tools()),
+    )
     while not clone.done:
         clone.step()
     assert clone.state.answer == "final from fork"
@@ -197,7 +251,9 @@ class QueueClient:
 
 
 def openai_text(text):
-    return NS(choices=[NS(message=NS(content=text, tool_calls=None), finish_reason="stop")])
+    return NS(
+        choices=[NS(message=NS(content=text, tool_calls=None), finish_reason="stop")]
+    )
 
 
 def anthropic_text(text):
@@ -231,7 +287,9 @@ def test_every_agent_type_runs_on_every_provider(agent_type, make_provider):
     result = agent.run("task")
 
     assert result == ("first" if agent_type is Agent else "second")
-    if client is not None:  # the wire format is the provider's business, whatever the agent type
+    if (
+        client is not None
+    ):  # the wire format is the provider's business, whatever the agent type
         assert len(client.requests) == agent.model_calls
 
 
@@ -244,17 +302,27 @@ def test_the_planning_call_goes_over_the_wire_without_tools():
     PlannerAgent(provider).run("task")
     assert "tools" not in client.requests[0] and "tools" in client.requests[1]
     # Roles still alternate after planning (the plan request isn't kept)
-    assert [m["role"] for m in client.requests[1]["messages"]] == ["user", "assistant", "user"]
+    assert [m["role"] for m in client.requests[1]["messages"]] == [
+        "user",
+        "assistant",
+        "user",
+    ]
 
 
 # --- the facade -----------------------------------------------------------------------------
 
 
 def test_harness_takes_an_agent_type():
-    h = Harness(MockProvider([answer("plan"), answer("done")]), agent_type=PlannerAgent, console=False)
+    h = Harness(
+        MockProvider([answer("plan"), answer("done")]),
+        agent_type=PlannerAgent,
+        console=False,
+    )
     assert isinstance(h.agent, PlannerAgent)
     assert h.run("task") == "done"
-    assert len(h.tracker.calls) == 2  # the planning call is tracked and budgeted like any other
+    assert (
+        len(h.tracker.calls) == 2
+    )  # the planning call is tracked and budgeted like any other
 
 
 def test_helpers_stay_plain_agents():

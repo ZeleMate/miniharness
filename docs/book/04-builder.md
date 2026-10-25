@@ -9,7 +9,7 @@ belonged anywhere. The textbook use, a fluent builder because a constructor has 
 little sense in Python. Keyword arguments and dataclasses already do that job:
 
 ```python
-agent = Agent(provider, system_prompt="Be brief.", max_steps=5)   # already readable
+agent = Agent(provider, system_prompt="Be brief.", max_steps=5)  # already readable
 ```
 
 So three options were offered: a fluent `Agent.builder()` (which would mostly teach why Python rarely needs
@@ -26,11 +26,13 @@ Put the timestamp at the top, and the cached prefix breaks on every single reque
 That's a genuine assembly rule, and enforcing assembly rules is what Builder is for:
 
 ```python
-prompt = (SystemPromptBuilder()
-          .environment(date="2026-10-25")      # called first...
-          .instructions("Be brief.")
-          .identity("You are a careful assistant.")
-          .build())                            # ...rendered last
+prompt = (
+    SystemPromptBuilder()
+    .environment(date="2026-10-25")  # called first...
+    .instructions("Be brief.")
+    .identity("You are a careful assistant.")
+    .build()
+)  # ...rendered last
 ```
 
 Whatever order you call the methods in, `build()` always renders identity, then tool rules, then

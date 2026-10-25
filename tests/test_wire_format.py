@@ -72,8 +72,16 @@ def test_openrouter_request_payload():
             "role": "assistant",
             "content": "Let me check.",
             "tool_calls": [
-                {"id": "c1", "type": "function", "function": {"name": "multiply", "arguments": '{"a": 2, "b": 3}'}},
-                {"id": "c2", "type": "function", "function": {"name": "current_time", "arguments": "{}"}},
+                {
+                    "id": "c1",
+                    "type": "function",
+                    "function": {"name": "multiply", "arguments": '{"a": 2, "b": 3}'},
+                },
+                {
+                    "id": "c2",
+                    "type": "function",
+                    "function": {"name": "current_time", "arguments": "{}"},
+                },
             ],
         },
         {"role": "tool", "tool_call_id": "c1", "content": "6"},
@@ -97,14 +105,22 @@ def test_openrouter_parses_tool_calls():
 
     assert resp.stop_reason == "tool_calls"
     assert resp.message.content == ""
-    assert resp.message.tool_calls == [ToolCall(id="x1", name="add", arguments={"a": 1, "b": 2})]
+    assert resp.message.tool_calls == [
+        ToolCall(id="x1", name="add", arguments={"a": 1, "b": 2})
+    ]
 
 
-@pytest.mark.parametrize(("finish", "expected"), [("stop", "end"), ("length", "max_tokens"), ("content_filter", "refusal")])
+@pytest.mark.parametrize(
+    ("finish", "expected"),
+    [("stop", "end"), ("length", "max_tokens"), ("content_filter", "refusal")],
+)
 def test_openrouter_stop_reasons(finish, expected):
     client = FakeClient(openai_response(content="hi", finish_reason=finish))
 
-    assert OpenRouterProvider("m", client).complete(CONVERSATION[:2], TOOLS).stop_reason == expected
+    assert (
+        OpenRouterProvider("m", client).complete(CONVERSATION[:2], TOOLS).stop_reason
+        == expected
+    )
 
 
 def test_openrouter_omits_tools_when_empty():
@@ -137,7 +153,12 @@ def test_anthropic_request_payload():
             "role": "assistant",
             "content": [
                 {"type": "text", "text": "Let me check."},
-                {"type": "tool_use", "id": "c1", "name": "multiply", "input": {"a": 2, "b": 3}},
+                {
+                    "type": "tool_use",
+                    "id": "c1",
+                    "name": "multiply",
+                    "input": {"a": 2, "b": 3},
+                },
                 {"type": "tool_use", "id": "c2", "name": "current_time", "input": {}},
             ],
         },
@@ -145,7 +166,11 @@ def test_anthropic_request_payload():
             "role": "user",
             "content": [  # both results share one user message
                 {"type": "tool_result", "tool_use_id": "c1", "content": "6"},
-                {"type": "tool_result", "tool_use_id": "c2", "content": "2026-01-01T00:00:00"},
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "c2",
+                    "content": "2026-01-01T00:00:00",
+                },
             ],
         },
     ]
@@ -184,7 +209,9 @@ def test_anthropic_parses_response():
 
     assert resp.stop_reason == "tool_calls"
     assert resp.message.content == "Checking."
-    assert resp.message.tool_calls == [ToolCall(id="t1", name="add", arguments={"a": 1, "b": 2})]
+    assert resp.message.tool_calls == [
+        ToolCall(id="t1", name="add", arguments={"a": 1, "b": 2})
+    ]
     assert resp.message.raw is blocks
 
 
@@ -193,6 +220,13 @@ def test_anthropic_parses_response():
     [("end_turn", "end"), ("max_tokens", "max_tokens"), ("refusal", "refusal")],
 )
 def test_anthropic_stop_reasons(stop, expected):
-    client = FakeClient(anthropic_response([NS(type="text", text="x")], stop_reason=stop))
+    client = FakeClient(
+        anthropic_response([NS(type="text", text="x")], stop_reason=stop)
+    )
 
-    assert AnthropicProvider("claude-x", client).complete(CONVERSATION[:2], TOOLS).stop_reason == expected
+    assert (
+        AnthropicProvider("claude-x", client)
+        .complete(CONVERSATION[:2], TOOLS)
+        .stop_reason
+        == expected
+    )

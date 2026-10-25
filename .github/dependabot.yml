@@ -1,0 +1,25 @@
+# Dependabot version updates. The 7-day cooldown skips releases young enough to
+# still be pulled if they turn out malicious; security updates ignore it.
+version: 2
+updates:
+  # The app's pyproject.toml and uv.lock, and the CI tools' own lock.
+  - package-ecosystem: uv
+    directories: ["/", "/.github/tools"]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    # The root covers .github/workflows; the composite actions are listed too.
+    directories: ["/", "/.github/actions/*"]
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

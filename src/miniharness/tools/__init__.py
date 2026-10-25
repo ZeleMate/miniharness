@@ -16,7 +16,7 @@ from miniharness.tools.policy import (
     Verdict,
     default_policy,
 )
-from miniharness.tools.toolbox import ToolMark, Toolbox, ToolSet, execute_all
+from miniharness.tools.toolbox import Toolbox, ToolMark, ToolSet, execute_all
 from miniharness.tools.view import ToolboxView
 
 

@@ -7,14 +7,14 @@ alone. Outputs, history and events still follow the model's order.
 
 import contextvars
 import uuid
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import groupby
 from types import MappingProxyType
-from typing import Callable, Mapping, Protocol
+from typing import Protocol
 
 from miniharness.events import EventBus, ToolCalled
-
 from miniharness.tools.base import IrreversibleError, Tool, ToolCommand
 from miniharness.tools.policy import Decision, PolicyChain, Verdict, default_policy
 from miniharness.types import ToolCall, ToolSpec
@@ -59,7 +59,9 @@ class Toolbox:
         self.denied: list[tuple[ToolCall, Decision]] = []
         self.events = events
         self.id = uuid.uuid4().hex  # lets a mark recognize the toolbox it came from
-        self.max_workers = max_workers  # 1: every call runs on the caller's thread (D221)
+        self.max_workers = (
+            max_workers  # 1: every call runs on the caller's thread (D221)
+        )
 
     def add(self, tool: Tool) -> None:
         if tool.name in self._tools:
@@ -99,7 +101,9 @@ class Toolbox:
             tool = self._tools.get(call.name)
             # An unknown tool runs nothing, so it never needs a group of its own. With one
             # worker there are no groups: each call is decided, run and reported in turn.
-            parallel = self.max_workers > 1 and (tool is None or (not tool.side_effects and tool.thread_safe))
+            parallel = self.max_workers > 1 and (
+                tool is None or (not tool.side_effects and tool.thread_safe)
+            )
             if parallel and joinable:
                 groups[-1].append(call)
             else:
@@ -122,13 +126,24 @@ class Toolbox:
         outputs = []
         for i, (call, decision) in enumerate(zip(calls, decisions)):
             if decision is None:
-                outputs.append(self._report(call, f"Error: unknown tool {call.name!r}", None))
+                outputs.append(
+                    self._report(call, f"Error: unknown tool {call.name!r}", None)
+                )
             elif i not in commands:
-                outputs.append(self._report(call, f"Permission denied: {decision.reason}", decision))
+                outputs.append(
+                    self._report(
+                        call, f"Permission denied: {decision.reason}", decision
+                    )
+                )
             elif (e := errors[i]) is not None:  # report failures back to the model
-                outputs.append(self._report(call, f"Error: {type(e).__name__}: {e}", decision, failed=True))
+                outputs.append(
+                    self._report(
+                        call, f"Error: {type(e).__name__}: {e}", decision, failed=True
+                    )
+                )
             else:
                 command = commands[i]
+                assert command.result is not None  # it ran without an error
                 self.history.append(command)
                 outputs.append(self._report(call, command.result.output, decision))
         return outputs
@@ -152,9 +167,19 @@ class Toolbox:
         # can't be entered by two threads at once (D220).
         contexts = [contextvars.copy_context() for _ in commands]
         with ThreadPoolExecutor(min(self.max_workers, len(commands))) as pool:
-            return list(pool.map(lambda ctx, command: ctx.run(_attempt, command), contexts, commands))
+            return list(
+                pool.map(
+                    lambda ctx, command: ctx.run(_attempt, command), contexts, commands
+                )
+            )
 
-    def _report(self, call: ToolCall, output: str, decision: Decision | None, failed: bool = False) -> str:
+    def _report(
+        self,
+        call: ToolCall,
+        output: str,
+        decision: Decision | None,
+        failed: bool = False,
+    ) -> str:
         if self.events is not None:
             self.events.emit(ToolCalled(call, output, decision, failed))
         return output
@@ -192,7 +217,9 @@ class Toolbox:
         blocking = [c for c in pending if not c.tool.reversible]
         if blocking:
             c = blocking[0]
-            raise IrreversibleError(f"Cannot rewind past {c.tool.name}({c.call.arguments})")
+            raise IrreversibleError(
+                f"Cannot rewind past {c.tool.name}({c.call.arguments})"
+            )
         for command in pending:
             command.undo()
         return pending
@@ -212,7 +239,7 @@ class Toolbox:
 def _attempt(command: ToolCommand) -> Exception | None:
     try:
         command.execute()
-    except Exception as e:  # becomes an error message, not a crash
+    except Exception as e:  # noqa: BLE001  becomes an error message, not a crash
         return e
     return None
 
@@ -237,7 +264,7 @@ def execute_split(
     calls can still run together, and everything happens in the model's order (D221).
     """
     outputs: list[str] = []
-    for here, run in groupby(calls, key=handled_here):
-        run = list(run)
+    for here, group in groupby(calls, key=handled_here):
+        run = list(group)
         outputs += [answer(call) for call in run] if here else execute_all(inner, run)
     return outputs

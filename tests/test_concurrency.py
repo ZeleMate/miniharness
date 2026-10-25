@@ -45,7 +45,9 @@ class Probe(Tool):
     name = "probe"
     description = "Record a visit."
 
-    def __init__(self, name: str = "probe", side_effects: bool = False, thread_safe: bool = True):
+    def __init__(
+        self, name: str = "probe", side_effects: bool = False, thread_safe: bool = True
+    ):
         self.name = name
         self.side_effects = side_effects
         self.thread_safe = thread_safe
@@ -99,14 +101,20 @@ def test_by_default_calls_run_one_at_a_time_on_the_callers_thread():
 def test_by_default_each_call_is_reported_before_the_next_one_runs():
     events = EventBus()
     probe = Probe()
-    events.subscribe(lambda event: probe.log.append(("event", event.call.arguments["label"])))
+    events.subscribe(
+        lambda event: probe.log.append(("event", event.call.arguments["label"]))
+    )
     tools = Toolbox([probe], policy=PolicyChain.allow_all(), events=events)
 
     tools.execute_all([call("probe", label="a"), call("probe", label="b")])
 
     assert probe.log == [
-        ("start", "a"), ("end", "a"), ("event", "a"),
-        ("start", "b"), ("end", "b"), ("event", "b"),
+        ("start", "a"),
+        ("end", "a"),
+        ("event", "a"),
+        ("start", "b"),
+        ("end", "b"),
+        ("event", "b"),
     ]
 
 
@@ -116,10 +124,17 @@ def test_a_call_with_side_effects_runs_alone_between_the_reads():
     tools = box(read, write)
 
     tools.execute_all(
-        [call("read", label="r1"), call("read", label="r2"), call("write", label="w"), call("read", label="r3")]
+        [
+            call("read", label="r1"),
+            call("read", label="r2"),
+            call("write", label="w"),
+            call("read", label="r3"),
+        ]
     )
 
-    assert log.index(("start", "w")) > max(log.index(("end", "r1")), log.index(("end", "r2")))
+    assert log.index(("start", "w")) > max(
+        log.index(("end", "r1")), log.index(("end", "r2"))
+    )
     assert log.index(("start", "r3")) > log.index(("end", "w"))
     assert read.most_active == 2  # r1 and r2 did overlap
 
@@ -136,7 +151,9 @@ def test_a_tool_that_isnt_thread_safe_runs_alone():
 def test_sub_agents_are_not_run_in_parallel():
     helper = AgentTool("helper", "A helper.", Agent(MockProvider(), tools=Toolbox([])))
 
-    assert helper.side_effects is False  # read-only, and still kept out of parallel groups
+    assert (
+        helper.side_effects is False
+    )  # read-only, and still kept out of parallel groups
     assert helper.thread_safe is False
 
 
@@ -162,7 +179,9 @@ class Slow(Tool):
 
     description = "Finish in reverse order."
 
-    def __init__(self, name: str, wait_for: threading.Event | None, done: threading.Event):
+    def __init__(
+        self, name: str, wait_for: threading.Event | None, done: threading.Event
+    ):
         self.name = name
         self.wait_for = wait_for
         self.done = done
@@ -179,13 +198,20 @@ def test_outputs_history_and_events_keep_the_models_order():
     events = EventBus()
     seen = []
     events.subscribe(seen.append)
-    tools = box(Slow("first", second_done, first_done), Slow("second", None, second_done), events=events)
+    tools = box(
+        Slow("first", second_done, first_done),
+        Slow("second", None, second_done),
+        events=events,
+    )
 
     outputs = tools.execute_all([call("first"), call("second")])
 
     assert outputs == ["first", "second"]
     assert [c.call.name for c in tools.history] == ["first", "second"]
-    assert [e.call.name for e in seen if isinstance(e, ToolCalled)] == ["first", "second"]
+    assert [e.call.name for e in seen if isinstance(e, ToolCalled)] == [
+        "first",
+        "second",
+    ]
 
 
 def test_events_are_emitted_on_the_callers_thread():
@@ -208,7 +234,6 @@ def test_policies_decide_in_order_on_the_callers_thread():
     class Recording:
         def check(self, call, tool):
             seen.append((call.id, threading.current_thread()))
-            return None
 
     policy = PolicyChain([Recording(), MaxCalls("probe", 2)], default=Verdict.ALLOW)
     tools = box(Probe(), policy=policy)
@@ -217,7 +242,9 @@ def test_policies_decide_in_order_on_the_callers_thread():
 
     assert seen == [(x, threading.current_thread()) for x in "abc"]
     assert outputs[:2] == ["a", "b"]
-    assert outputs[2].startswith("Permission denied")  # the third call, in the model's order
+    assert outputs[2].startswith(
+        "Permission denied"
+    )  # the third call, in the model's order
     assert [c.id for c, _ in tools.denied] == ["c"]
 
 
@@ -225,7 +252,12 @@ def test_a_failing_call_doesnt_disturb_the_rest_of_its_group():
     tools = box(Probe())
 
     outputs = tools.execute_all(
-        [call("probe", label="a"), call("probe", label="b", fail=True), call("nope"), call("probe", label="c")]
+        [
+            call("probe", label="a"),
+            call("probe", label="b", fail=True),
+            call("nope"),
+            call("probe", label="c"),
+        ]
     )
 
     assert outputs[0] == "a" and outputs[3] == "c"
@@ -266,7 +298,9 @@ def test_a_view_keeps_the_calls_it_allows_running_together():
     tools = box(Meet(2), Probe("secret"))
     view = ToolboxView(tools, allow=["meet"])
 
-    outputs = view.execute_all([call("meet", label="a"), call("meet", label="b"), call("secret")])
+    outputs = view.execute_all(
+        [call("meet", label="a"), call("meet", label="b"), call("secret")]
+    )
 
     assert outputs == ["met a", "met b", "Error: unknown tool 'secret'"]
     assert tools.tools["secret"].log == []
@@ -275,10 +309,18 @@ def test_a_view_keeps_the_calls_it_allows_running_together():
 def test_team_members_keep_their_tools_running_together():
     member = Agent(MockProvider(), tools=box(Meet(2)))
     reviewer = Agent(MockProvider(), tools=Toolbox([]))
-    team = Team({"writer": member, "reviewer": reviewer}, {"writer": ["reviewer"]}, finishers={"reviewer"})
+    team = Team(
+        {"writer": member, "reviewer": reviewer},
+        {"writer": ["reviewer"]},
+        finishers={"reviewer"},
+    )
 
     outputs = team.members["writer"].tools.execute_all(
-        [call("meet", label="a"), call("meet", label="b"), call("send_message", to="reviewer", text="hi")]
+        [
+            call("meet", label="a"),
+            call("meet", label="b"),
+            call("send_message", to="reviewer", text="hi"),
+        ]
     )
 
     assert outputs == ["met a", "met b", "Message sent to reviewer."]
@@ -314,13 +356,21 @@ def test_an_agent_still_accepts_a_tool_set_without_execute_all():
     agent = Agent(MockProvider(two_meetings_then("done")), tools=OneByOne())
 
     assert agent.run("meet twice") == "done"
-    assert [m.content for m in agent.messages if m.role == "tool"] == ["ran meet", "ran meet"]
+    assert [m.content for m in agent.messages if m.role == "tool"] == [
+        "ran meet",
+        "ran meet",
+    ]
 
 
 @pytest.mark.parametrize("read_only", [False, True])
 def test_harness_tool_workers_turn_it_on(read_only):
     h = Harness(
-        MockProvider(two_meetings_then("done")), tools=[Meet(2)], tool_workers=2, read_only=read_only, budget=None, console=False
+        MockProvider(two_meetings_then("done")),
+        tools=[Meet(2)],
+        tool_workers=2,
+        read_only=read_only,
+        budget=None,
+        console=False,
     )
 
     assert h.run("meet twice") == "done"

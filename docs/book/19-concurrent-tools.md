@@ -94,7 +94,7 @@ it emitted would have been tagged with no agent at depth 0.
 The fix is one line with two details that matter (D220):
 
 ```python
-contexts = [contextvars.copy_context() for _ in commands]   # on *this* thread
+contexts = [contextvars.copy_context() for _ in commands]  # on *this* thread
 pool.map(lambda ctx, command: ctx.run(_attempt, command), contexts, commands)
 ```
 

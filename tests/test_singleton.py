@@ -6,6 +6,8 @@ It isn't used anywhere in miniharness; these tests exist to *show* its costs.
 The global registry this stage removed (D17) had the same costs, without the class.
 """
 
+from typing import Self
+
 import pytest
 
 from miniharness import Harness
@@ -15,7 +17,7 @@ from miniharness.providers import MockProvider, ProviderRegistry, default_regist
 class SingletonRegistry:
     _instance: "SingletonRegistry | None" = None
 
-    def __new__(cls) -> "SingletonRegistry":
+    def __new__(cls) -> Self:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance.providers = {}
@@ -85,7 +87,9 @@ def test_a_test_owns_its_registry_and_needs_no_cleanup():
     mine = default_registry.copy()
     mine.add("echo", EchoProvider)
 
-    h = Harness("echo", registry=mine, console=False)  # the dependency is a visible parameter
+    h = Harness(
+        "echo", registry=mine, console=False
+    )  # the dependency is a visible parameter
 
     assert isinstance(h.stack.base, EchoProvider)
     assert "echo" not in default_registry  # nothing to reset

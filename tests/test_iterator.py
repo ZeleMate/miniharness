@@ -23,7 +23,10 @@ from miniharness.types import Completed, TextDelta
 
 def call(name, **arguments):
     return LLMResponse(
-        Message(role="assistant", tool_calls=[ToolCall(id=f"c-{name}", name=name, arguments=arguments)]),
+        Message(
+            role="assistant",
+            tool_calls=[ToolCall(id=f"c-{name}", name=name, arguments=arguments)],
+        ),
         "tool_calls",
     )
 
@@ -35,7 +38,9 @@ def answer(text):
 def make_agent(script, stream=True, **kwargs):
     events = kwargs.pop("events", None) or EventBus()
     tools = kwargs.pop("tools", None) or Toolbox([Add()], events=events)
-    return Agent(MockProvider(script), tools=tools, events=events, stream=stream, **kwargs)
+    return Agent(
+        MockProvider(script), tools=tools, events=events, stream=stream, **kwargs
+    )
 
 
 def kinds(events):
@@ -73,7 +78,9 @@ def test_the_conversation_is_the_same_streamed_or_not():
     streamed, plain = make_agent(list(script)), make_agent(list(script), stream=False)
 
     assert streamed.run("2+3?") == plain.run("2+3?")
-    assert [(m.role, m.content) for m in streamed.messages] == [(m.role, m.content) for m in plain.messages]
+    assert [(m.role, m.content) for m in streamed.messages] == [
+        (m.role, m.content) for m in plain.messages
+    ]
 
 
 def test_a_budget_stop_while_streaming_ends_the_run_cleanly():
@@ -142,7 +149,9 @@ def test_iter_run_is_lazy():
 
     events = agent.iter_run("task")
 
-    assert agent.state.name == "idle"  # nothing happens until the first event is asked for
+    assert (
+        agent.state.name == "idle"
+    )  # nothing happens until the first event is asked for
     next(events)
     assert agent.state.name == "thinking"
 
@@ -157,7 +166,9 @@ def test_breaking_out_mid_stream_closes_the_stream_and_leaves_the_agent_resumabl
         if isinstance(event, TokenStreamed) and event.text.strip() == "two":
             break
 
-    assert agent.state.name == "thinking"  # the step never finished, so nothing was recorded
+    assert (
+        agent.state.name == "thinking"
+    )  # the step never finished, so nothing was recorded
     assert len(agent.messages) == 2
     assert len(agent.events._handlers) == 1  # iter_run's buffer unsubscribed itself
 
@@ -177,14 +188,21 @@ def test_the_callers_code_between_events_is_not_tagged_as_the_agent():
 
 def test_iter_run_includes_sub_agent_events_at_their_depth():
     bus = EventBus()
-    sub = Agent(MockProvider([answer("five")]), tools=Toolbox([]), events=bus, stream=True)
+    sub = Agent(
+        MockProvider([answer("five")]), tools=Toolbox([]), events=bus, stream=True
+    )
     helper = AgentTool("helper", "Adds numbers.", sub)
-    parent = make_agent([call("helper", task="2+3?"), answer("The helper says five.")], events=bus,
-                        tools=Toolbox([helper], events=bus))
+    parent = make_agent(
+        [call("helper", task="2+3?"), answer("The helper says five.")],
+        events=bus,
+        tools=Toolbox([helper], events=bus),
+    )
 
     events = list(parent.iter_run("ask"))
 
-    sub_tokens = [e for e in events if isinstance(e, TokenStreamed) and e.agent == "helper"]
+    sub_tokens = [
+        e for e in events if isinstance(e, TokenStreamed) and e.agent == "helper"
+    ]
     assert [e.text for e in sub_tokens] == ["five"]
     assert sub_tokens[0].depth == 1
     # The sub-run comes before the tool call that started it (post-order, as on the bus)
@@ -201,7 +219,9 @@ def test_iter_continue_drives_a_follow_up():
 
     assert isinstance(events[-1], RunFinished)
     assert events[-1].answer == "second"
-    assert not any(isinstance(e, RunStarted) for e in events)  # follow_up() emitted it already
+    assert not any(
+        isinstance(e, RunStarted) for e in events
+    )  # follow_up() emitted it already
 
 
 def test_iter_run_works_without_streaming_one_step_at_a_time():
@@ -210,14 +230,21 @@ def test_iter_run_works_without_streaming_one_step_at_a_time():
     events = list(agent.iter_run("1+1"))
 
     assert not any(isinstance(e, TokenStreamed) for e in events)
-    assert [e.new for e in events if isinstance(e, StateChanged)] == ["thinking", "acting_on_tools", "thinking", "done"]
+    assert [e.new for e in events if isinstance(e, StateChanged)] == [
+        "thinking",
+        "acting_on_tools",
+        "thinking",
+        "done",
+    ]
 
 
 def test_a_fork_can_turn_streaming_on():
     agent = make_agent([answer("plain")], stream=False)
     agent.run("hi")
 
-    fork = agent.fork(stream=True, provider=MockProvider([answer("streamed now")]), tools=Toolbox([]))
+    fork = agent.fork(
+        stream=True, provider=MockProvider([answer("streamed now")]), tools=Toolbox([])
+    )
     fork.follow_up("again")
 
     assert any(isinstance(e, TokenStreamed) for e in fork.iter_continue())

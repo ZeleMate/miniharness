@@ -14,7 +14,10 @@ from miniharness.tools import Add, Toolbox
 
 def tool(name, **arguments):
     return LLMResponse(
-        Message(role="assistant", tool_calls=[ToolCall(id=f"c-{name}", name=name, arguments=arguments)]),
+        Message(
+            role="assistant",
+            tool_calls=[ToolCall(id=f"c-{name}", name=name, arguments=arguments)],
+        ),
         "tool_calls",
     )
 
@@ -39,7 +42,12 @@ def review_team(writer_script, reviewer_script, **kwargs):
     return team, writer, reviewer
 
 
-WRITER = [send("reviewer", "draft 1"), say("sent"), send("reviewer", "draft 2"), say("sent")]
+WRITER = [
+    send("reviewer", "draft 1"),
+    say("sent"),
+    send("reviewer", "draft 2"),
+    say("sent"),
+]
 REVIEWER = [send("writer", "line 2 is weak"), say("sent"), tool("approve"), say("done")]
 
 
@@ -92,37 +100,59 @@ def test_each_member_sees_only_messages_sent_to_it():
     team, _, _ = review_team(WRITER, REVIEWER)
     team.run("writer", "Write a haiku.")
 
-    writer_inbox = [m.content for m in team.members["writer"].messages if m.role == "user"]
-    reviewer_inbox = [m.content for m in team.members["reviewer"].messages if m.role == "user"]
-    assert writer_inbox == ["Message from user:\nWrite a haiku.", "Message from reviewer:\nline 2 is weak"]
-    assert reviewer_inbox == [
-        "Team task: Write a haiku.\n\nMessage from writer:\ndraft 1",  # first turn: the brief is shared
-        "Message from writer:\ndraft 2",
+    writer_inbox = [
+        m.content for m in team.members["writer"].messages if m.role == "user"
     ]
+    reviewer_inbox = [
+        m.content for m in team.members["reviewer"].messages if m.role == "user"
+    ]
+    assert writer_inbox == [
+        "Message from user:\nWrite a haiku.",
+        "Message from reviewer:\nline 2 is weak",
+    ]
+    assert (
+        reviewer_inbox
+        == [
+            "Team task: Write a haiku.\n\nMessage from writer:\ndraft 1",  # first turn: the brief is shared
+            "Message from writer:\ndraft 2",
+        ]
+    )
 
 
 def test_members_remember_their_own_earlier_turns():
     team, _, _ = review_team(WRITER, REVIEWER)
     team.run("writer", "Write a haiku.")
 
-    writer_tool_calls = [tc.arguments for m in team.members["writer"].messages for tc in m.tool_calls]
-    assert [a["text"] for a in writer_tool_calls] == ["draft 1", "draft 2"]  # one conversation
+    writer_tool_calls = [
+        tc.arguments for m in team.members["writer"].messages for tc in m.tool_calls
+    ]
+    assert [a["text"] for a in writer_tool_calls] == [
+        "draft 1",
+        "draft 2",
+    ]  # one conversation
 
 
 def test_members_never_reference_each_other():
     team, writer, _ = review_team(WRITER, REVIEWER)
 
-    assert writer.tools is not team.members["writer"].tools  # caller's agent left untouched
+    assert (
+        writer.tools is not team.members["writer"].tools
+    )  # caller's agent left untouched
     assert "send_message" not in writer.tools.specs()
     assert "reviewer" not in vars(team.members["writer"])
 
 
 def test_an_agent_that_already_ran_is_not_changed_by_the_team():
-    writer = Agent(MockProvider([say("earlier answer"), send("reviewer", "d"), say("sent")]), tools=Toolbox([]))
+    writer = Agent(
+        MockProvider([say("earlier answer"), send("reviewer", "d"), say("sent")]),
+        tools=Toolbox([]),
+    )
     writer.run("an earlier task")
     before = list(writer.messages)
     reviewer = Agent(MockProvider([tool("approve"), say("done")]), tools=Toolbox([]))
-    team = Team({"writer": writer, "reviewer": reviewer}, {"writer": ["reviewer"]}, {"reviewer"})
+    team = Team(
+        {"writer": writer, "reviewer": reviewer}, {"writer": ["reviewer"]}, {"reviewer"}
+    )
 
     team.run("writer", "go")
 
@@ -130,25 +160,42 @@ def test_an_agent_that_already_ran_is_not_changed_by_the_team():
 
 
 def test_a_second_run_waits_for_a_new_approval():
-    writer = [send("reviewer", "draft 1"), say("sent"), send("reviewer", "draft 2"), say("sent")]
+    writer = [
+        send("reviewer", "draft 1"),
+        say("sent"),
+        send("reviewer", "draft 2"),
+        say("sent"),
+    ]
     reviewer = [tool("approve"), say("done"), say("not approving this one")]
     team, _, _ = review_team(writer, reviewer)
 
     assert team.run("writer", "task 1") == "draft 1"
     second = team.run("writer", "task 2")
 
-    assert second == "[stopped: no messages] not approving this one"  # not run 1's stale result
-    assert team.log == [TeamMessage("user", "writer", "task 2"), TeamMessage("writer", "reviewer", "draft 2")]
+    assert (
+        second == "[stopped: no messages] not approving this one"
+    )  # not run 1's stale result
+    assert team.log == [
+        TeamMessage("user", "writer", "task 2"),
+        TeamMessage("writer", "reviewer", "draft 2"),
+    ]
 
 
 def test_a_second_run_shares_the_new_brief():
-    writer = [send("reviewer", "draft 1"), say("sent"), send("reviewer", "draft 2"), say("sent")]
+    writer = [
+        send("reviewer", "draft 1"),
+        say("sent"),
+        send("reviewer", "draft 2"),
+        say("sent"),
+    ]
     reviewer = [tool("approve"), say("done"), tool("approve"), say("done")]
     team, _, _ = review_team(writer, reviewer)
     team.run("writer", "task 1")
 
     assert team.run("writer", "task 2") == "draft 2"
-    reviewer_inbox = [m.content for m in team.members["reviewer"].messages if m.role == "user"]
+    reviewer_inbox = [
+        m.content for m in team.members["reviewer"].messages if m.role == "user"
+    ]
     assert reviewer_inbox[-1] == "Team task: task 2\n\nMessage from writer:\ndraft 2"
 
 
@@ -156,7 +203,9 @@ def test_routes_limit_who_can_message_whom():
     team, _, _ = review_team([], [])
     specs = team.members["writer"].tools.specs()
 
-    assert specs["send_message"]["parameters"]["properties"]["to"]["enum"] == ["reviewer"]
+    assert specs["send_message"]["parameters"]["properties"]["to"]["enum"] == [
+        "reviewer"
+    ]
     assert "approve" not in specs  # only the reviewer may approve
     assert team._send("writer", "boss", "hi").startswith("Error: writer cannot send")
 
@@ -186,7 +235,11 @@ def test_approving_before_receiving_anything_is_an_error():
 
 def test_unknown_members_in_routes_are_rejected():
     with pytest.raises(ValueError, match="editor"):
-        Team(members={"writer": Agent(MockProvider([]))}, routes={"writer": ["editor"]}, finishers=set())
+        Team(
+            members={"writer": Agent(MockProvider([]))},
+            routes={"writer": ["editor"]},
+            finishers=set(),
+        )
 
 
 # --- Ending without finish -------------------------------------------------------------------
@@ -203,11 +256,15 @@ def test_max_turns_stops_an_endless_conversation():
 def test_a_member_that_sends_nothing_ends_the_team():
     team, _, _ = review_team([say("I'm done, no review needed.")], [])
 
-    assert team.run("writer", "go") == "[stopped: no messages] I'm done, no review needed."
+    assert (
+        team.run("writer", "go") == "[stopped: no messages] I'm done, no review needed."
+    )
 
 
 def test_a_stopped_member_stops_the_whole_team():
-    team, _, _ = review_team([send("reviewer", "d"), say("sent")], [BudgetExceeded("over")])
+    team, _, _ = review_team(
+        [send("reviewer", "d"), say("sent")], [BudgetExceeded("over")]
+    )
 
     assert team.run("writer", "go") == "[stopped: budget] over"
 
@@ -221,11 +278,23 @@ def test_routed_messages_are_events_and_members_are_tagged():
     bus.subscribe(ConsolePrinter(out))
     writer = Agent(MockProvider(WRITER), tools=Toolbox([]), events=bus)
     reviewer = Agent(MockProvider(REVIEWER), tools=Toolbox([]), events=bus)
-    team = Team({"writer": writer, "reviewer": reviewer}, {"writer": ["reviewer"], "reviewer": ["writer"]}, {"reviewer"})
+    team = Team(
+        {"writer": writer, "reviewer": reviewer},
+        {"writer": ["reviewer"], "reviewer": ["writer"]},
+        {"reviewer"},
+    )
 
     team.run("writer", "Write a haiku.")
 
     routed = [(e.sender, e.to) for e in events if isinstance(e, MessageRouted)]
-    assert routed == [("user", "writer"), ("writer", "reviewer"), ("reviewer", "writer"), ("writer", "reviewer")]
-    assert {e.agent for e in events if hasattr(e, "agent") and e.agent} == {"writer", "reviewer"}
+    assert routed == [
+        ("user", "writer"),
+        ("writer", "reviewer"),
+        ("reviewer", "writer"),
+        ("writer", "reviewer"),
+    ]
+    assert {e.agent for e in events if hasattr(e, "agent") and e.agent} == {
+        "writer",
+        "reviewer",
+    }
     assert "── reviewer → writer: line 2 is weak" in out.getvalue()

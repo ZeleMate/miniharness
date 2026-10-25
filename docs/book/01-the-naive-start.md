@@ -51,12 +51,12 @@ The provider code was written badly *on purpose*. One function did everything:
 ```python
 def call_llm(provider, model, messages, tools):
     if provider == "mock":
-        return MOCK_RESPONSES.pop(0)          # a module-level global
+        return MOCK_RESPONSES.pop(0)  # a module-level global
     elif provider == "openrouter":
-        client = OpenAI(base_url=..., api_key=...)   # rebuilt on every call
+        client = OpenAI(base_url=..., api_key=...)  # rebuilt on every call
         # ...forty lines translating messages to OpenAI's format, inline...
     elif provider == "anthropic":
-        client = anthropic.Anthropic()        # rebuilt on every call
+        client = anthropic.Anthropic()  # rebuilt on every call
         # ...fifty lines translating messages to Anthropic's format, inline...
 ```
 

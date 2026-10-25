@@ -11,7 +11,12 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "mypy>=2.4.0",
+    "pytest>=8",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.2",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -26,3 +31,31 @@ pythonpath = ["src"]  # works even if macOS hides the editable-install .pth
 
 [tool.uv]
 python-preference = "only-managed"  # always use uv-installed Python, never Homebrew's
+
+[tool.ruff]
+# Ruff's own defaults (line length 88, its default rule set). Target version
+# comes from requires-python.
+extend-exclude = ["workspace"]
+
+[tool.ruff.lint]
+extend-ignore = [
+    # Tools declare `parameters` as a class-level dict on purpose (the Tool API is
+    # declarative, and an instance may override it), and nothing mutates it.
+    "RUF012",
+]
+
+[tool.mypy]
+files = ["src"]
+mypy_path = "src"
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[tool.coverage.run]
+source = ["miniharness"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 95  # 97% when CI was added
+show_missing = true
+skip_covered = true

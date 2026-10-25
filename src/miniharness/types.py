@@ -38,8 +38,16 @@ class Usage:
     cost_usd: float | None = None  # None means the cost is unknown
 
     def __add__(self, other: "Usage") -> "Usage":
-        cost = None if self.cost_usd is None or other.cost_usd is None else self.cost_usd + other.cost_usd
-        return Usage(self.input_tokens + other.input_tokens, self.output_tokens + other.output_tokens, cost)
+        cost = (
+            None
+            if self.cost_usd is None or other.cost_usd is None
+            else self.cost_usd + other.cost_usd
+        )
+        return Usage(
+            self.input_tokens + other.input_tokens,
+            self.output_tokens + other.output_tokens,
+            cost,
+        )
 
 
 @dataclass

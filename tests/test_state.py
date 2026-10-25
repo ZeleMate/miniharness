@@ -27,7 +27,14 @@ def down():
 
 def breaker(script, **kwargs):
     clock = Clock()
-    b = CircuitBreaker(MockProvider(script), threshold=2, cooldown_s=30, clock=clock, on=(ConnectionError,), **kwargs)
+    b = CircuitBreaker(
+        MockProvider(script),
+        threshold=2,
+        cooldown_s=30,
+        clock=clock,
+        on=(ConnectionError,),
+        **kwargs,
+    )
     return b, clock
 
 
@@ -87,7 +94,11 @@ def test_half_open_trial_success_closes():
 
     clock.now = 31
     assert b.complete(HI, {}).message.content == "recovered"
-    assert b.transitions == [("closed", "open"), ("open", "half_open"), ("half_open", "closed")]
+    assert b.transitions == [
+        ("closed", "open"),
+        ("open", "half_open"),
+        ("half_open", "closed"),
+    ]
 
 
 def test_half_open_trial_failure_reopens_with_a_fresh_cooldown():
@@ -120,7 +131,10 @@ def test_fallback_skips_an_open_breaker_instantly():
     clock = Clock()
     primary = MockProvider([down(), down()])
     b = CircuitBreaker(primary, threshold=2, clock=clock, on=(ConnectionError,))
-    chain = FallbackChain([b, MockProvider([reply("a"), reply("b"), reply("c")])], on=(ConnectionError, CircuitOpenError))
+    chain = FallbackChain(
+        [b, MockProvider([reply("a"), reply("b"), reply("c")])],
+        on=(ConnectionError, CircuitOpenError),
+    )
 
     answers = [chain.complete(HI, {}).message.content for _ in range(3)]
 
@@ -137,7 +151,10 @@ def test_default_errors_include_circuit_open_for_fallbacks():
 
 def tool_turn():
     return LLMResponse(
-        Message(role="assistant", tool_calls=[ToolCall(id="c", name="add", arguments={"a": 1, "b": 2})]),
+        Message(
+            role="assistant",
+            tool_calls=[ToolCall(id="c", name="add", arguments={"a": 1, "b": 2})],
+        ),
         "tool_calls",
     )
 

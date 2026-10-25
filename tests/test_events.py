@@ -5,23 +5,43 @@ import pytest
 
 from miniharness import Agent, LLMResponse, Message, ToolCall
 from miniharness.errors import BudgetExceeded
-from miniharness.events import EventBus, ModelCalled, RunFinished, RunStarted, StateChanged, ToolCalled
+from miniharness.events import (
+    EventBus,
+    ModelCalled,
+    RunFinished,
+    RunStarted,
+    StateChanged,
+    ToolCalled,
+)
 from miniharness.observers import ConsolePrinter, JsonlTracer
 from miniharness.providers import MockProvider
-from miniharness.tools import PolicyChain, Toolbox, WriteFile, default_policy, default_tools
+from miniharness.tools import (
+    PolicyChain,
+    Toolbox,
+    WriteFile,
+    default_policy,
+    default_tools,
+)
 from miniharness.types import Usage
 
 
 def tool_turn(name="add", **arguments):
     return LLMResponse(
-        Message(role="assistant", tool_calls=[ToolCall(id="c", name=name, arguments=arguments or {"a": 1, "b": 2})]),
+        Message(
+            role="assistant",
+            tool_calls=[
+                ToolCall(id="c", name=name, arguments=arguments or {"a": 1, "b": 2})
+            ],
+        ),
         "tool_calls",
         Usage(10, 2, 0.001),
     )
 
 
 def answer(text="3"):
-    return LLMResponse(Message(role="assistant", content=text), "end", Usage(12, 1, 0.001))
+    return LLMResponse(
+        Message(role="assistant", content=text), "end", Usage(12, 1, 0.001)
+    )
 
 
 def recorded_run(script, toolbox=None):
@@ -117,9 +137,13 @@ def test_model_called_carries_usage_and_tool_count():
 
 
 def test_tool_called_carries_the_policy_decision(tmp_path):
-    toolbox = Toolbox([WriteFile(tmp_path)], policy=default_policy(approver=lambda c: False))
+    toolbox = Toolbox(
+        [WriteFile(tmp_path)], policy=default_policy(approver=lambda c: False)
+    )
 
-    events = recorded_run([tool_turn("write_file", path="a.txt", content="x"), answer()], toolbox)
+    events = recorded_run(
+        [tool_turn("write_file", path="a.txt", content="x"), answer()], toolbox
+    )
 
     [called] = [e for e in events if isinstance(e, ToolCalled)]
     assert called.decision.verdict.value == "deny"
@@ -143,7 +167,10 @@ def test_unknown_and_failing_tools_are_reported():
 def test_a_stopped_run_finishes_with_the_stopped_state():
     events = recorded_run([BudgetExceeded("over")])
 
-    assert (events[-1].state, events[-1].answer) == ("stopped", "[stopped: budget] over")
+    assert (events[-1].state, events[-1].answer) == (
+        "stopped",
+        "[stopped: budget] over",
+    )
     assert not any(isinstance(e, ModelCalled) for e in events)  # no call was made
 
 
@@ -179,7 +206,9 @@ def test_console_printer_names_the_denying_policy(tmp_path):
     out = io.StringIO()
     toolbox = Toolbox([WriteFile(tmp_path)], policy=default_policy(approver=None))
 
-    for event in recorded_run([tool_turn("write_file", path="a.txt", content="x"), answer()], toolbox):
+    for event in recorded_run(
+        [tool_turn("write_file", path="a.txt", content="x"), answer()], toolbox
+    ):
         ConsolePrinter(out)(event)
 
     assert "(by AskBeforeSideEffects)" in out.getvalue()
@@ -215,7 +244,9 @@ def test_the_default_toolbox_reports_to_the_agents_bus():
 
 
 def test_an_injected_toolbox_is_left_as_its_builder_wired_it():
-    toolbox = Toolbox(default_tools())  # no bus: the caller's choice, not the agent's to fix (D76)
+    toolbox = Toolbox(
+        default_tools()
+    )  # no bus: the caller's choice, not the agent's to fix (D76)
     agent = Agent(MockProvider([answer()]), tools=toolbox)
 
     assert toolbox.events is None and agent.events is not None

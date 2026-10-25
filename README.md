@@ -40,21 +40,45 @@ from miniharness import Harness
 load_dotenv(".env")
 h = Harness("openrouter", budget=0.05, workspace="workspace", approve=True)
 print(h.run("Write a haiku about undo to haiku.txt"))
-print(h.report())   # calls, tokens, cost
-h.rewind()          # undo the file changes
+print(h.report())  # calls, tokens, cost
+h.rewind()  # undo the file changes
 
 # The agent type and the provider vary independently (Bridge):
 from miniharness import PlannerAgent
+
 Harness("openrouter", agent_type=PlannerAgent).run("What is (17 * 23) + 4?")
 
 # Your own providers go in your own registry; the built-in one stays untouched:
 from miniharness.providers import OpenRouterProvider, default_registry
+
 mine = default_registry.copy()
-mine.add("cheap", lambda model="deepseek/deepseek-chat", **kw: OpenRouterProvider(model=model, **kw))
+mine.add(
+    "cheap",
+    lambda model="deepseek/deepseek-chat", **kw: OpenRouterProvider(model=model, **kw),
+)
 Harness("cheap", registry=mine).run("Hi")
 ```
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
+
+## Development
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs these on every PR and push to `main`,
+and weekly for new advisories and Semgrep rules. All of them run the same way locally:
+
+```bash
+uv run ruff check .                 # lint (`--fix` applies the safe fixes)
+uv run ruff format .                # format; CI runs `--check`
+uv run mypy                         # types, src/ only
+uv run pytest --cov                 # tests, 95% coverage floor; CI runs 3.12, 3.13 and 3.14
+uv run --project .github/tools semgrep scan --config p/python --config p/security-audit \
+  --config p/secrets --metrics=off --error .   # SAST, no account needed
+```
+
+CI also checks both lockfiles, audits every locked package with pip-audit, scans the whole git
+history for secrets with gitleaks, and lints the workflows with actionlint and zizmor. The CI-only
+tools live in [`.github/tools`](.github/tools/pyproject.toml), locked apart from the app (DECISIONS.md D225).
+Dependabot bumps both lockfiles and the action pins weekly, after a 7-day cooldown.
 
 ## Study book
 

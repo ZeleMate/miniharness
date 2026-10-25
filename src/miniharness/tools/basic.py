@@ -1,7 +1,7 @@
 """Read-only tools: no side effects, nothing to undo."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from miniharness.tools.base import Tool, ToolResult
 
@@ -35,4 +35,4 @@ class CurrentTime(Tool):
     description = "Get the current UTC time as an ISO 8601 string."
 
     def run(self) -> ToolResult:
-        return ToolResult(datetime.now(timezone.utc).isoformat())
+        return ToolResult(datetime.now(UTC).isoformat())

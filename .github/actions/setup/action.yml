@@ -1,0 +1,22 @@
+# Installs the pinned uv (checksum-verified) and the Python it's asked for.
+# Every job's tools come from a lockfile with hashes, so this is the only installer.
+name: Set up uv
+description: Install the pinned, checksum-verified uv and a uv-managed Python.
+inputs:
+  python-version:
+    description: Python to use; empty means .python-version.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      with:
+        # Bump both together; the digest is the release's
+        # uv-x86_64-unknown-linux-gnu.tar.gz.sha256.
+        version: "0.13.1"
+        checksum: eadd9d27c134ab5ac1ffd4473b97a741407f3ea238288f03121fc4deddf90220
+        python-version: ${{ inputs.python-version }}
+        # Keyed on uv.lock. Only pull_request and push to main run here, nothing
+        # publishes, so a poisoned cache has nothing to reach.
+        enable-cache: true
