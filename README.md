@@ -11,7 +11,7 @@ Uses [uv](https://docs.astral.sh/uv/) for Python, dependencies and the venv.
 
 ```bash
 uv sync                # creates .venv and installs everything from uv.lock
-cp .env.example .env   # add your OPENROUTER_API_KEY (and optionally ANTHROPIC_API_KEY)
+cp .env.example .env   # add your OPENROUTER_API_KEY; for Anthropic, `ant auth login` or ANTHROPIC_API_KEY
 uv run pytest          # uses the mock provider: free and offline
 uv run examples/hello.py                 # flags mapped onto the Harness facade
 uv run examples/hello.py -m anthropic:claude-haiku-5-5

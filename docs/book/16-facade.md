@@ -53,7 +53,7 @@ default here points the same way (D176):
 - **Side effects are denied unless `approve=` is given.** A library should never call `input()` on its own,
   because that hangs headless runs in CI, on a server or in a subprocess. Live, with all defaults, the model
   tried to write a file, was told it needed approval, and explained this to the user.
-- **Every run has a $0.05 budget**, unless you pass `budget=None`.
+- **Every Harness has a $0.05 budget**, shared by all its runs, unless you pass `budget=None`.
 - **File tools exist only when a workspace is given.**
 
 The facade also wires one event bus through the agent, the toolbox and every helper (D177), which fixed

@@ -9,6 +9,7 @@ stack, and the stacking order changes the behavior:
 - the cache is outermost, so a cache hit costs nothing and skips the budget
 - retry sits outside the budget, so every attempt is checked against it
 - the tracker is innermost, so it sees every real call, including failed ones
+  (a FallbackChain inside it adds what its skipped links were billed, D213)
 
 Streaming (stage 15): `_Wrapper.stream()` goes through the wrapper's own
 `complete()`, so a wrapper that doesn't know about streaming still applies
@@ -20,6 +21,7 @@ default would have silently skipped the budget.
 import hashlib
 import json
 import pickle
+from dataclasses import replace
 from pathlib import Path
 from typing import Iterator
 
@@ -239,7 +241,8 @@ def transient_errors() -> tuple[type[Exception], ...]:
     return (
         anthropic.APIConnectionError,  # includes timeouts
         anthropic.RateLimitError,
-        anthropic.InternalServerError,  # 5xx, including overloaded
+        anthropic.InternalServerError,  # 5xx
+        anthropic.OverloadedError,  # 529: its own class, not a subclass of InternalServerError
         openai.APIConnectionError,
         openai.RateLimitError,
         openai.InternalServerError,
@@ -254,6 +257,10 @@ class FallbackChain:
     A provider passes the request on by failing with a transient error or by
     refusing. Configuration errors (bad key, unknown model) and StopRun (e.g. a
     budget) are never swallowed.
+
+    A refusal or a malformed reply that is passed on was still billed, so its
+    usage is added to the usage of the answer (or error) the chain finally
+    returns. A tracker around the chain then counts the whole cost (D66, D213).
     """
 
     def __init__(
@@ -276,19 +283,23 @@ class FallbackChain:
 
     def complete(self, messages: list[Message], tools: dict[str, ToolSpec]) -> LLMResponse:
         last = len(self.providers) - 1
+        billed: list[Usage] = []  # usage of the links that passed the request on
         for i, provider in enumerate(self.providers):
             try:
                 response = provider.complete(messages, tools)
             except self.on as e:
                 self.failures.append((provider, f"{type(e).__name__}: {e}"))
                 if i == last:
+                    _charge_earlier_links(e, billed)
                     raise
+                _keep_billed(e, billed)
                 continue
             if self.on_refusal and response.stop_reason == "refusal" and i < last:
                 self.failures.append((provider, "refusal"))
+                billed.append(response.usage or Usage())
                 continue
             self.served_by = provider
-            return response
+            return _add_billed(response, billed)
         raise AssertionError("unreachable")
 
     def stream(self, messages: list[Message], tools: dict[str, ToolSpec]) -> Iterator[StreamChunk]:
@@ -298,6 +309,7 @@ class FallbackChain:
         text is kept: switching then would show two answers glued together.
         """
         last = len(self.providers) - 1
+        billed: list[Usage] = []  # usage of the links that passed the request on
         for i, provider in enumerate(self.providers):
             shown = False
             response = None  # Completed is held back until we know we're keeping this answer
@@ -311,15 +323,47 @@ class FallbackChain:
             except self.on as e:
                 self.failures.append((provider, f"{type(e).__name__}: {e}"))
                 if shown or i == last:
+                    _charge_earlier_links(e, billed)
                     raise
+                _keep_billed(e, billed)
                 continue
             if response is None:
                 raise RuntimeError("Stream ended without a Completed chunk")
             if self.on_refusal and response.stop_reason == "refusal" and i < last and not shown:
                 self.failures.append((provider, "refusal"))
+                billed.append(response.usage or Usage())
                 continue
             self.served_by = provider
-            yield Completed(response)
+            yield Completed(_add_billed(response, billed))
             return
         raise AssertionError("unreachable")
+
+
+def _keep_billed(error: Exception, billed: list[Usage]) -> None:
+    # Of the transient errors, only a malformed reply was generated (and billed)
+    if isinstance(error, MalformedResponseError):
+        billed.append(error.usage or Usage())
+
+
+def _total(usage: Usage | None, billed: list[Usage]) -> Usage | None:
+    if not billed:
+        return usage
+    total = usage or Usage()  # no usage reported: the cost stays unknown
+    for earlier in billed:
+        total = total + earlier
+    return total
+
+
+def _add_billed(response: LLMResponse, billed: list[Usage]) -> LLMResponse:
+    return replace(response, usage=_total(response.usage, billed)) if billed else response
+
+
+def _charge_earlier_links(error: Exception, billed: list[Usage]) -> None:
+    """Let the error the chain gives up with carry the earlier links' usage, if it can.
+
+    Only a MalformedResponseError carries usage. After another error (say the backup is
+    down too), the cost of an earlier skipped refusal is lost (D213).
+    """
+    if billed and isinstance(error, MalformedResponseError):
+        error.usage = _total(error.usage, billed)
 

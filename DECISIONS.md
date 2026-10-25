@@ -3,7 +3,7 @@
 Every non-obvious design choice, with the options and trade-offs, so the
 reasoning survives longer than the conversation that produced it.
 **Status:** `accepted` (chosen and built), `open` (revisit later),
-`superseded by Dn` (replaced).
+`superseded by Dn` (replaced), `notes` (observations that decide nothing).
 
 `PATTERNS.md` is your personal learning journal; this file records *what the
 codebase decided and why*.
@@ -499,7 +499,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   textbook State machine: after N failures, skip the provider for a cooldown period.
 
 ### D66. Usage of a refusal swallowed by the fallback is invisible to an outer tracker
-**Status:** open (made during implementation)
+**Status:** accepted: fixed by D213 (review before publishing; was open)
 - With `UsageTracker(FallbackChain([...]))`, the tracker only sees the response that
   was returned. A refused response was still billed, but nobody counts it.
 - **Fix options:** a tracker inside each link, or the chain reporting swallowed usage.
@@ -1674,7 +1674,7 @@ from `agent.messages` afterwards.
   "Unknown provider 'cheap'"; and the default registry unchanged afterwards.
 
 ### D212. Crediting refactoring.guru
-**Status:** settled (your call)
+**Status:** accepted (your call)
 - **Why:** the project learned its patterns from refactoring.guru, and you wanted to respect the
   authors' [Content Usage Policy](https://refactoring.guru/content-usage-policy) as fully as possible.
 - **Audit:** nothing in the repo copies the site's text, code examples or illustrations. All of the
@@ -1685,3 +1685,43 @@ from `agent.messages` afterwards.
   rather than Factory Method); added a Credits section to the README that states the policy's
   limits, so future additions stay inside them.
 - **Revisit:** if a quote or illustration is ever added, link that specific page next to it.
+
+---
+
+## Review before publishing
+
+### D213. Fixes from a full review of the code and the docs
+**Status:** accepted (your call to fix; the shapes below were made during implementation)
+- **Overloaded Anthropic API wasn't transient.** The SDK raises `OverloadedError` for 529, and it is
+  *not* a subclass of `InternalServerError`, so the comment "5xx, including overloaded" was wrong and an
+  overloaded API neither fell back nor tripped the breaker. `transient_errors()` now lists it. **Still
+  open:** an error that arrives *inside* an Anthropic stream is a plain `APIStatusError` (the HTTP status
+  was 200), so it isn't treated as transient.
+- **D66, and its malformed-reply twin.** A refusal or a malformed reply that `FallbackChain` skipped was
+  billed but never reached the `UsageTracker` around the chain, so the budget under-counted. **Options:**
+  a tracker inside every link (but `BudgetGuard` reads one tracker, D47) · the chain calls back into the
+  tracker (wiring after construction) · the chain adds the skipped links' usage to the answer it
+  returns. **Chosen:** the last one. A chain call's usage now means "everything this request was billed",
+  and the error the chain gives up with carries it too when it's a `MalformedResponseError`.
+  **Costs:** tokens from different models are summed into one `Usage`, and the call count still counts
+  requests, not attempts (as before). If the backup then fails with an error that can't carry usage (an
+  outage), the cost of a skipped refusal is still lost.
+- **`Team.run()` twice returned the first run's result.** `_result`, the outbox and the last-received
+  messages were never reset. Each run now resets them and the log, and shares the new brief on every
+  member's first turn *of that run*. Members keep their conversations across runs, like `follow_up()`.
+- **A team member shared the caller's `messages` list** (`copy.copy` is shallow), so a team built from an
+  agent that had already run appended to the caller's conversation, breaking D137's promise. The copy
+  now gets its own list.
+- **`examples/bridge.py`** built each `Harness` outside its `try`, so a missing key crashed the whole
+  grid, contrary to D200. Construction is inside the `try` now.
+- **OpenAI-compatible `finish_reason="content_filter"`** is now `"refusal"`, not `"end"`, so a fallback
+  chain can pass it on (D64).
+- **Docstrings:** `Harness.rewind()` and `Toolbox.undo_all()` said they undo everything; both stop with
+  `IrreversibleError` at a change that can't be undone (D34).
+- **Tests added:** every fix above has a regression test, plus `report()` with cache and fallback together
+  (the D103 path, untested until now) and a stopped run's checkpoint round trip.
+- **Docs corrected:** an empty `ANTHROPIC_API_KEY` only shadows the profile in some tools (the `ant`
+  CLI), not in the Python SDK this project pins; stale counts (decisions, tests, open decisions); the
+  stage-2 promise was made in `PATTERNS.md`, not the README; three tools before stage 5, not four; the
+  budget belongs to a `Harness`, not to one run; the epilogue's "found by live runs" table now says which
+  bugs were found by rereading code; dated names (Claude Code's Agent tool, the OpenAI Agents SDK).

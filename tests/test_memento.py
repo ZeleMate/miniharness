@@ -6,7 +6,8 @@ from anthropic.types import TextBlock, ToolUseBlock
 from miniharness import Agent, LLMResponse, Message, ToolCall
 from miniharness.adapters import AnthropicMessagesAdapter
 from miniharness.checkpoint import Checkpoint
-from miniharness.lifecycle import ActingOnTools, Done, Thinking
+from miniharness.errors import BudgetExceeded
+from miniharness.lifecycle import ActingOnTools, Done, Stopped, Thinking, from_snapshot
 from miniharness.providers import MockProvider
 from miniharness.tools import IrreversibleError, PolicyChain, Tool, Toolbox, ToolboxView, ToolResult, default_tools
 
@@ -205,6 +206,24 @@ def test_anthropic_raw_blocks_are_saved_as_plain_json(tmp_path):
     loaded = Checkpoint.load(path)
     wire = AnthropicMessagesAdapter().to_wire(list(loaded.messages), {})
     assert wire["messages"][1]["content"] == saved
+
+
+def test_a_stopped_run_survives_save_and_load(tmp_path):
+    agent = Agent(MockProvider([BudgetExceeded("over")]))
+    agent.run("task")
+    path = tmp_path / "run.json"
+
+    agent.checkpoint().save(path)
+    fresh = Agent(MockProvider())
+    fresh.restore(Checkpoint.load(path), files=False)  # another process: no history to rewind (D111)
+
+    assert isinstance(fresh.state, Stopped)
+    assert (fresh.state.reason, fresh.state.answer) == ("budget", "[stopped: budget] over")
+
+
+def test_an_unknown_state_is_rejected():
+    with pytest.raises(ValueError, match="Unknown agent state"):
+        from_snapshot({"name": "dreaming"})
 
 
 def test_unknown_versions_are_rejected(tmp_path):

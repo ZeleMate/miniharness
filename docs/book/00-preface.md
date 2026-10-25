@@ -40,7 +40,7 @@ two to four concrete options, a code preview of each, and a recommendation. You 
 smaller decisions made while implementing were listed afterwards, with their alternatives, so you could
 overturn any of them.
 
-All of it went into `DECISIONS.md`: 211 numbered entries by the end. Each says what the options were, why
+All of it went into `DECISIONS.md`: 213 numbered entries by the end. Each says what the options were, why
 one won, what it cost, whether it's settled or still open, and when to revisit it. Decisions you made are
 marked "(your call)". The ones found in live runs say so.
 
@@ -51,7 +51,7 @@ you want every detail.
 
 Python 3.13, managed entirely by `uv`. The OpenAI SDK pointed at OpenRouter, so cheap models like DeepSeek
 could do most of the live testing, plus the Anthropic SDK, included specifically to create the need for
-an Adapter, because its message format differs from OpenAI's in interesting ways. pytest throughout: 301
+an Adapter, because its message format differs from OpenAI's in interesting ways. pytest throughout: 316
 tests by the end, all running offline in about a second.
 
 ## A note on what went wrong

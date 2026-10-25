@@ -184,7 +184,11 @@ class Harness:
         return helper
 
     def rewind(self) -> list[ToolCommand]:
-        """Undo every file change the agent made, newest first."""
+        """Undo the agent's file changes, newest first.
+
+        Stops with IrreversibleError at a change that can't be undone (D34),
+        leaving it and everything older in place.
+        """
         return self.toolbox.undo_all()
 
     @property

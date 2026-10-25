@@ -188,8 +188,9 @@ One entry per pattern, written when you apply it. Template:
 - **Problem:** (1) the fallback retried a dead provider on every turn (D65). The fix,
   a circuit breaker, behaves completely differently depending on its history. (2) The
   agent's loop had implicit phases you couldn't see or step through.
-- **Shape:** each state is an object with its own `call()`/`step()` that returns or sets the
-  next state. `CircuitBreaker`: `Closed → Open → HalfOpen → Closed/Open`. Agent:
+- **Shape:** each state is an object with its own behavior that returns or sets the next state:
+  the breaker's states have `admit()`/`succeeded()`/`failed()` hooks (D161), the agent's states a
+  `step()`. `CircuitBreaker`: `Closed → Open → HalfOpen → Closed/Open`. Agent:
   `Idle → Thinking ⇄ ActingOnTools → Done/Stopped`.
 - **State vs Strategy:** both swap an object to change behavior. With Strategy, the *client*
   picks the object and it rarely changes. With State, the *object changes itself* as things
@@ -256,7 +257,7 @@ One entry per pattern, written when you apply it. Template:
 - **Patterns compose:** Prototype (fresh copies), Proxy (`ToolboxView` for read-only sub-agents),
   Chain of Responsibility (policies decide on the derived property), Observer (one bus, tagged
   with depth).
-- **Harness connection:** Claude Code's sub-agents (the Task tool) are this: an agent exposed to its
+- **Harness connection:** Claude Code's sub-agents (the Agent tool, formerly Task) are this: an agent exposed to its
   parent as a tool, returning only a summary.
 - **Try it:** give the researcher its own cheaper model (`fork(provider=...)` on the prototype).
   Where does the cost show up now, and does the shared budget still apply?
@@ -278,8 +279,8 @@ One entry per pattern, written when you apply it. Template:
 - **Live lessons:** a reviewer substituted its own text (so `approve()` replaced `finish(result)`,
   D136), and isolation hid the brief from the reviewer (so the mediator now shares it, D142).
   Roles are enforced by the mediator's API, not by prompts.
-- **Harness connection:** "handoff" and "supervisor" multi-agent setups (OpenAI Swarm, LangGraph
-  supervisors) are mediators: the routing lives outside the agents.
+- **Harness connection:** "handoff" and "supervisor" multi-agent setups (the OpenAI Agents SDK's
+  handoffs, LangGraph supervisors) are mediators: the routing lives outside the agents.
 - **Try it:** add an `editor` member between writer and reviewer by editing only `routes`. Did any
   agent's code or prompt need to change?
 - **Your notes:**
@@ -365,7 +366,7 @@ One entry per pattern, written when you apply it. Template:
   API afterwards (`report()`, `rewind()`).
 - **Defaults are the facade's real design work:** the parts can do anything, so the facade decides what
   happens when the caller says nothing. Here, side effects are denied without `approve=` (a library
-  never calls `input()`), every run has a $0.05 budget, and file tools need a workspace.
+  never calls `input()`), every harness has a $0.05 budget, and file tools need a workspace.
 - **Live lessons:** the defaults compose in ways the parts didn't. Breaking out of `h.stream()` makes the
   next call stop on `budget`, because the abandoned call's cost is unknown and the default budget fails
   closed (D179). Moving the checkpoint code into the facade exposed a bug in the old example: a helper
@@ -384,7 +385,7 @@ One entry per pattern, written when you apply it. Template:
 
 ## Bridge (bonus stage)
 
-- **Problem:** the README promised "a `ReActAgent` and a `PlannerAgent` can each use any provider"
+- **Problem:** this journal promised "a `ReActAgent` and a `PlannerAgent` can each use any provider"
   back in stage 2, but there was only ever one agent class. The provider side had grown into a whole
   hierarchy (three providers, seven wrappers); the agent side hadn't grown at all. Adding agent types
   naively (an `OpenRouterPlanner`, an `AnthropicPlanner`, ...) is the N × M class explosion Bridge exists

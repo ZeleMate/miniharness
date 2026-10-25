@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from miniharness.events import MessageRouted
-from miniharness.lifecycle import Stopped
+from miniharness.lifecycle import Done, Stopped
 from miniharness.tools.toolbox import ToolSet
 from miniharness.types import ToolCall, ToolSpec
 
@@ -96,11 +96,13 @@ class Team:
             member = copy.copy(agent)
             member.name = name
             member.tools = _MemberTools(agent.tools, self, name)
+            member.messages = list(agent.messages)  # a shallow copy would share the list
             self.members[name] = member
         self.log: list[TeamMessage] = []
         self._last_received: dict[str, TeamMessage] = {}
         self._outbox: list[TeamMessage] = []
         self._result: str | None = None
+        self._briefed: set[str] = set()
 
     # --- called by members' coordination tools ------------------------------------
 
@@ -122,7 +124,17 @@ class Team:
     # --- the mediation loop -------------------------------------------------------
 
     def run(self, first: str, task: str) -> str:
+        """Deliver `task` to `first` and mediate until the team finishes.
+
+        A team can run again: members keep their conversations (like `follow_up()`),
+        while the result, the log and the brief start fresh for the new task.
+        """
         self._task = task
+        self.log = []
+        self._last_received.clear()
+        self._outbox.clear()
+        self._result = None
+        self._briefed.clear()
         queue = [TeamMessage("user", first, task)]
         turns = 0
         last_answer = ""
@@ -150,11 +162,12 @@ class Team:
         member = self.members[message.to]
         member.events.emit(MessageRouted(message.sender, message.to, message.text))
         text = f"Message from {message.sender}:\n{message.text}"
-        if member.done:
+        if message.to not in self._briefed and message.sender != "user":
+            # A member's first turn in this run: share the team's brief, so a reviewer
+            # can check the original requirements without the writer relaying them
+            text = f"Team task: {self._task}\n\n{text}"
+        self._briefed.add(message.to)
+        if isinstance(member.state, Done):
             member.follow_up(text)
-        elif message.sender == "user":
-            member.start(text)
         else:
-            # A member's first turn: share the team's brief, so a reviewer can
-            # check the original requirements without the writer relaying them
-            member.start(f"Team task: {self._task}\n\n{text}")
+            member.start(text)

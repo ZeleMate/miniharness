@@ -1,6 +1,6 @@
 # Epilogue: what it all adds up to
 
-Eighteen stages, 211 decisions, 301 tests. Looking back, the individual patterns matter less than the ideas
+Eighteen stages, 213 decisions, 316 tests. Looking back, the individual patterns matter less than the ideas
 that kept coming back. This chapter collects those ideas, the bugs that taught the most, the environment
 problems that cost real time, and the questions the project deliberately left open.
 
@@ -44,12 +44,13 @@ full class form only when it pays.
 
 **7. Small interfaces make everything swappable.** `Provider` needs one method; `ToolSet` needs two. That's
 why mocks, wrappers, proxies, views and team tools could stand in for the real thing everywhere, and why
-301 tests run offline in about a second.
+316 tests run offline in about a second.
 
-## The bugs that real runs found
+## The bugs the tests missed
 
-Tests pass against the behavior you imagined. Real runs show the behavior you built. Every one of these was
-found by running the real thing, not by a test:
+Tests pass against the behavior you imagined. Real runs show the behavior you built. None of these was
+caught by a test. Most were found by running the real thing; three (D103, D172, D182) turned up while
+code was being reread or moved, which is the other habit worth keeping:
 
 | Chapter | What happened | What changed |
 |---|---|---|
@@ -93,7 +94,7 @@ decision log, and they're the first things to re-check once the key is replaced.
 
 ## The questions left open
 
-Twenty-six decisions are still open. They're not failures: each one is a design question the project chose
+Twenty-five decisions are still open. They're not failures: each one is a design question the project chose
 not to answer yet, with its options and trade-offs already written down. Grouped by theme:
 
 **Concurrency and execution guarantees.** Tools run one at a time, and a surprising amount of the design
@@ -115,8 +116,7 @@ read-only only (D184).
 possible (D118): pause, save, exit, and resume when someone answers.
 
 **Abstractions that leak.** Anthropic's raw content (D8), mixed-provider conversations after a fallback
-(D67), refused responses that are billed but invisible to an outer tracker (D66), code that has to see
-through proxies (D73), and events that carry live mutable objects (D100).
+(D67), code that has to see through proxies (D73), and events that carry live mutable objects (D100).
 
 **The rest.** No Abstract Factory (D14), a plain-string prompt that can't carry a cache breakpoint (D25), a
 hardcoded price table (D52), `max_steps` raising instead of stopping (D90), and no event for unexpected

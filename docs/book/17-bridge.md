@@ -4,8 +4,8 @@
 
 ## A promise from stage 2
 
-Back in chapter 2, the README promised that "a `ReActAgent` and a `PlannerAgent` can each use any
-provider." Fifteen stages later, there was still only one agent class. Meanwhile the provider side had grown
+Back in chapter 2, the pattern journal (`PATTERNS.md`) promised that "a `ReActAgent` and a `PlannerAgent`
+can each use any provider." Fifteen stages later, there was still only one agent class. Meanwhile the provider side had grown
 into a whole hierarchy: three providers and seven wrappers. Adding agent types naively, an
 `OpenRouterPlanner` and an `AnthropicPlanner` and so on, is exactly the N × M class explosion Bridge exists to
 prevent.

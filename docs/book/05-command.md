@@ -6,7 +6,7 @@
 
 Until this stage, a tool call was a dictionary lookup followed by a function call. The result came back,
 and that was the end of it. Nothing recorded what had happened, nothing could be replayed, and nothing
-could be undone. The four tools also lived in a module-level `TOOLS` dict, another global.
+could be undone. The three tools also lived in a module-level `TOOLS` dict, another global.
 
 The Command pattern starts from a simple observation: **you can't hold on to a function call, but you can
 hold on to an object.** Turn each call into an object that carries its tool, its arguments, its result and

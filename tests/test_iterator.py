@@ -169,7 +169,7 @@ def test_the_callers_code_between_events_is_not_tagged_as_the_agent():
     agent = make_agent([answer("x y")])
     depths = []
 
-    for event in agent.iter_run("hi"):
+    for _ in agent.iter_run("hi"):
         depths.append(current_depth())
 
     assert set(depths) == {-1}  # the agent scope is never held across a yield

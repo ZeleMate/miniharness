@@ -334,6 +334,20 @@ def test_fallback_skips_a_refusal_that_streamed_no_text():
     assert chain.failures[0][1] == "refusal"
 
 
+def test_a_streamed_answer_after_a_skipped_refusal_includes_its_cost():
+    main = Scripted([Completed(reply("", cost=0.02, stop="refusal"))], model="main")
+    backup = Scripted([TextDelta("sure"), Completed(reply("sure", cost=0.01))], model="backup")
+
+    assert collect(FallbackChain([main, backup]).stream(HELLO, {})).usage == Usage(20, 10, pytest.approx(0.03))
+
+
+def test_a_streamed_malformed_reply_that_was_skipped_is_billed():
+    main = Scripted([MalformedResponseError("bad json", Usage(7, 7, 0.05))], model="main")
+    backup = Scripted([Completed(reply(cost=0.01))], model="backup")
+
+    assert collect(FallbackChain([main, backup]).stream(HELLO, {})).usage.cost_usd == pytest.approx(0.06)
+
+
 def test_fallback_keeps_a_refusal_whose_text_was_already_shown():
     main = Scripted([TextDelta("I can't"), Completed(reply("I can't", stop="refusal"))], model="main")
     backup = Scripted([Completed(reply())], model="backup")

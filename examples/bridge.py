@@ -28,9 +28,9 @@ def main() -> None:
 
     for model in args.model or ["openrouter"]:
         for agent_type in AGENT_TYPES:
-            h = Harness(model, agent_type=agent_type, budget=args.budget, console=False)
             label = f"{agent_type.__name__} × {model}"
-            try:
+            try:  # building can fail too, e.g. a missing API key
+                h = Harness(model, agent_type=agent_type, budget=args.budget, console=False)
                 answer = h.run(args.task)
             except Exception as e:  # one broken cell shouldn't hide the rest of the grid
                 print(f"{label}: failed: {type(e).__name__}: {e}\n")

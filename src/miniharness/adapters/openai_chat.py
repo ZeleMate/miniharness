@@ -78,6 +78,8 @@ class OpenAIChatAdapter:
             stop = "tool_calls"
         elif finish_reason == "length":
             stop = "max_tokens"
+        elif finish_reason == "content_filter":
+            stop = "refusal"  # so a FallbackChain can pass it on, like Anthropic's refusals
         else:
             stop = "end"
         return LLMResponse(

@@ -40,7 +40,7 @@ This is the oldest trick in object-oriented design, and it has a well-known limi
 **one axis of variation per subclass**. A `LoggingAgent` and a `PoliteAgent` can't be combined without a
 third class. That limit is exactly why the next chapter reached for composition instead.
 
-The hooks proved durable, though. Seventeen stages later, the Bridge chapter added two more
+The hooks proved durable, though. Sixteen stages later, the Bridge chapter added two more
 (`first_state` and `after_answer`) to build new kinds of agents, and the lifecycle states of chapter 9 call
 these same hooks, so every subclass kept working through every refactor.
 
@@ -84,8 +84,9 @@ content. It worked, and it was a crack in the abstraction from day one. That cra
 Two small things from this stage are worth keeping. First, `uv` became the only Python tool: `uv sync`,
 `uv run`, `uv add`, never `pip`, with uv managing the interpreter itself
 (`python-preference = "only-managed"`). Second, an early attempt at authentication taught a subtle trap:
-an *empty* `ANTHROPIC_API_KEY=` line in `.env` silently overrides other credential sources, because empty
-still counts as "set".
+an `ANTHROPIC_API_KEY` in the environment silently overrides an `ant auth login` profile, and the `ant` CLI
+counts even an *empty* `ANTHROPIC_API_KEY=` line as "set". (The Python SDK treats an empty value as unset,
+but tools differ, so `.env.example` leaves the line commented out.)
 
 ## The one thing to remember
 

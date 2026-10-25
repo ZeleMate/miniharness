@@ -117,6 +117,41 @@ def test_members_never_reference_each_other():
     assert "reviewer" not in vars(team.members["writer"])
 
 
+def test_an_agent_that_already_ran_is_not_changed_by_the_team():
+    writer = Agent(MockProvider([say("earlier answer"), send("reviewer", "d"), say("sent")]), tools=Toolbox([]))
+    writer.run("an earlier task")
+    before = list(writer.messages)
+    reviewer = Agent(MockProvider([tool("approve"), say("done")]), tools=Toolbox([]))
+    team = Team({"writer": writer, "reviewer": reviewer}, {"writer": ["reviewer"]}, {"reviewer"})
+
+    team.run("writer", "go")
+
+    assert writer.messages == before  # the copy's follow-up went into its own list
+
+
+def test_a_second_run_waits_for_a_new_approval():
+    writer = [send("reviewer", "draft 1"), say("sent"), send("reviewer", "draft 2"), say("sent")]
+    reviewer = [tool("approve"), say("done"), say("not approving this one")]
+    team, _, _ = review_team(writer, reviewer)
+
+    assert team.run("writer", "task 1") == "draft 1"
+    second = team.run("writer", "task 2")
+
+    assert second == "[stopped: no messages] not approving this one"  # not run 1's stale result
+    assert team.log == [TeamMessage("user", "writer", "task 2"), TeamMessage("writer", "reviewer", "draft 2")]
+
+
+def test_a_second_run_shares_the_new_brief():
+    writer = [send("reviewer", "draft 1"), say("sent"), send("reviewer", "draft 2"), say("sent")]
+    reviewer = [tool("approve"), say("done"), tool("approve"), say("done")]
+    team, _, _ = review_team(writer, reviewer)
+    team.run("writer", "task 1")
+
+    assert team.run("writer", "task 2") == "draft 2"
+    reviewer_inbox = [m.content for m in team.members["reviewer"].messages if m.role == "user"]
+    assert reviewer_inbox[-1] == "Team task: task 2\n\nMessage from writer:\ndraft 2"
+
+
 def test_routes_limit_who_can_message_whom():
     team, _, _ = review_team([], [])
     specs = team.members["writer"].tools.specs()

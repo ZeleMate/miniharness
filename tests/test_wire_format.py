@@ -100,7 +100,7 @@ def test_openrouter_parses_tool_calls():
     assert resp.message.tool_calls == [ToolCall(id="x1", name="add", arguments={"a": 1, "b": 2})]
 
 
-@pytest.mark.parametrize(("finish", "expected"), [("stop", "end"), ("length", "max_tokens")])
+@pytest.mark.parametrize(("finish", "expected"), [("stop", "end"), ("length", "max_tokens"), ("content_filter", "refusal")])
 def test_openrouter_stop_reasons(finish, expected):
     client = FakeClient(openai_response(content="hi", finish_reason=finish))
 

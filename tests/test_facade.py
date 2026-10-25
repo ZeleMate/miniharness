@@ -5,17 +5,16 @@ import json
 import pytest
 
 from miniharness import Harness, LLMResponse, Message, ToolCall
+from miniharness.errors import MalformedResponseError
 from miniharness.events import RunFinished, TokenStreamed, ToolCalled
 from miniharness.providers import (
     BudgetGuard,
     CircuitBreaker,
     DiskCache,
-    FallbackChain,
     LazyProvider,
     MockProvider,
     ProviderRegistry,
     Retry,
-    UsageTracker,
     build_stack,
     default_registry,
     lazy_provider,
@@ -97,6 +96,18 @@ def test_run_returns_the_answer_and_report_sums_the_calls():
     assert h.run("2+3?") == "5"
     assert h.cost == pytest.approx(0.02)
     assert h.report() == "2 model call(s), 20 in / 10 out tokens, $0.020000"
+
+
+def test_report_adds_cache_and_fallback_details(tmp_path):
+    # The D103 path: a fallback failure and a cache in the same report
+    main = MockProvider([MalformedResponseError("bad json", Usage(1, 1, cost_usd=0.0))], model="main")
+    h = Harness(main, fallback=MockProvider([answer("ok")], model="backup"), cache=tmp_path, console=False)
+
+    assert h.run("hi") == "ok"
+    assert h.report() == (
+        "1 model call(s), 11 in / 6 out tokens, $0.010000, cache 0 hit(s) / 1 miss(es)\n"
+        "  fell back from main: MalformedResponseError: bad json"
+    )
 
 
 def test_follow_up_continues_the_conversation():

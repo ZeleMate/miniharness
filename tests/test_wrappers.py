@@ -263,6 +263,47 @@ def test_last_refusal_is_returned_not_raised():
     assert chain.complete(HI, {}).stop_reason == "refusal"
 
 
+def test_a_skipped_refusal_is_billed_with_the_answer():
+    chain = FallbackChain([MockProvider([refusal()]), MockProvider([reply(cost=0.01, tokens=(10, 5))])], on=())
+
+    assert chain.complete(HI, {}).usage == Usage(11, 6, pytest.approx(0.01))
+
+
+def test_a_skipped_malformed_reply_is_billed_with_the_answer():
+    bad = MalformedResponseError("bad json", Usage(100, 50, cost_usd=0.03))
+    chain = FallbackChain([MockProvider([bad]), MockProvider([reply(cost=0.01)])])
+
+    assert chain.complete(HI, {}).usage.cost_usd == pytest.approx(0.04)
+
+
+def test_a_skipped_link_with_unknown_cost_makes_the_answer_unknown():
+    bad = MalformedResponseError("bad json")  # no usage reported
+    chain = FallbackChain([MockProvider([bad]), MockProvider([reply(cost=0.01)])])
+
+    assert chain.complete(HI, {}).usage.cost_usd is None  # so a budget fails closed
+
+
+def test_the_last_malformed_reply_carries_every_links_usage():
+    first = MalformedResponseError("bad", Usage(1, 1, cost_usd=0.01))
+    last = MalformedResponseError("bad again", Usage(2, 2, cost_usd=0.02))
+    chain = FallbackChain([MockProvider([first]), MockProvider([last])])
+
+    with pytest.raises(MalformedResponseError) as raised:
+        chain.complete(HI, {})
+    assert raised.value.usage == Usage(3, 3, pytest.approx(0.03))
+
+
+def test_a_tracker_around_the_chain_counts_what_the_chain_skipped():
+    # D66: before, the refused call was billed but no tracker saw it
+    tracker = UsageTracker(FallbackChain([MockProvider([refusal()]), MockProvider([reply(cost=0.01)])], on=()))
+    refused = refusal().usage
+
+    tracker.complete(HI, {})
+
+    assert tracker.total.input_tokens == 10 + refused.input_tokens
+    assert tracker.total.cost_usd == pytest.approx(0.01 + refused.cost_usd)
+
+
 def test_last_error_propagates():
     chain = FallbackChain([MockProvider([ConnectionError("a")]), MockProvider([ConnectionError("b")])], on=(ConnectionError,))
 
@@ -301,3 +342,11 @@ def test_default_errors_are_transient_only():
         assert not issubclass(sdk.BadRequestError, on)
         assert not issubclass(sdk.NotFoundError, on)
     assert issubclass(MalformedResponseError, on)
+
+
+def test_an_overloaded_anthropic_api_is_transient():
+    # 529 has its own class in the Anthropic SDK; it's not an InternalServerError
+    import anthropic
+
+    assert not issubclass(anthropic.OverloadedError, anthropic.InternalServerError)
+    assert issubclass(anthropic.OverloadedError, FallbackChain([MockProvider()]).on)

@@ -82,7 +82,8 @@ The same live run exposed another flaw: "fell back" was printed *twice*, because
 calls tried the broken provider first again (D65). That costs latency and money on every turn. The fix is a
 circuit breaker, and it waited for chapter 9, where it's a textbook example of State. Two subtler gaps were
 logged too: a refused response that the chain skips was still billed, but an outer tracker never sees it
-(D66), and after a fallback one conversation mixes providers, the `raw` leak from chapter 2 in action (D67).
+(D66, fixed in the review before publishing, D213), and after a fallback one conversation mixes providers,
+the `raw` leak from chapter 2 in action (D67).
 
 ## The one thing to remember
 

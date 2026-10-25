@@ -1,7 +1,5 @@
 import io
 
-import pytest
-
 from miniharness import Agent, LLMResponse, Message, ToolCall
 from miniharness.events import EventBus, RunStarted, ToolCalled, current_depth
 from miniharness.observers import ConsolePrinter

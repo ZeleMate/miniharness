@@ -116,7 +116,11 @@ class Toolbox:
         return pending
 
     def undo_all(self) -> list[ToolCommand]:
-        """Rewind every reversible change, newest first."""
+        """Undo changes newest first, until the history is clean or an irreversible change stops it.
+
+        At an irreversible change, raises IrreversibleError (see `undo_last`); the newer
+        changes stay undone.
+        """
         undone = []
         while (command := self.undo_last()) is not None:
             undone.append(command)
