@@ -1884,7 +1884,10 @@ from `agent.messages` afterwards.
   `p/security-audit` and `p/secrets`, `--metrics=off`. **Options:** CE with no token · `semgrep ci`
   with a Semgrep AppSec token (cross-file taint, supply-chain reachability, a dashboard). **Cost:** no
   cross-file analysis, and the registry rulesets aren't versioned, so a new rule can turn a run red
-  without a commit. Nothing was wired in before this: no config, no token, no Semgrep checks.
+  without a commit. **Correction:** Semgrep Cloud's managed scans were already on for this repo
+  (the `semgrep-cloud-platform/scan` check, run by Semgrep's GitHub App on its own servers). That
+  doesn't show in the repo or in a token's view of its secrets, which is why it was missed. So
+  there are two Semgrep scans for now, and which one stays is still open.
 - **Ruff (your call): its defaults, line length 88.** Ruff 0.17's default rule set is broad (about
   400 rules), so no `select` list. One mechanical formatting commit, listed in
   `.git-blame-ignore-revs`. RUF012 is off: `Tool.parameters` is a declarative class attribute.
