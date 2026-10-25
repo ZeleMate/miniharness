@@ -211,11 +211,10 @@ class DiskCache(_Wrapper):
         file = self.path / f"{self.key(messages, tools)}.pkl"
         if file.exists():
             self.hits += 1
-            return pickle.loads(file.read_bytes())
+            return _load(file)
         response = self.inner.complete(messages, tools)
         self.misses += 1
-        self.path.mkdir(parents=True, exist_ok=True)
-        file.write_bytes(pickle.dumps(response))
+        _store(file, response)
         return response
 
     def stream(
@@ -224,15 +223,12 @@ class DiskCache(_Wrapper):
         file = self.path / f"{self.key(messages, tools)}.pkl"
         if file.exists():
             self.hits += 1
-            yield from as_stream(
-                pickle.loads(file.read_bytes())
-            )  # a hit replays all at once
+            yield from as_stream(_load(file))  # a hit replays all at once
             return
         for chunk in stream_from(self.inner, messages, tools):
             if isinstance(chunk, Completed):
                 self.misses += 1
-                self.path.mkdir(parents=True, exist_ok=True)
-                file.write_bytes(pickle.dumps(chunk.response))
+                _store(file, chunk.response)
             yield chunk
 
     @property
@@ -260,6 +256,20 @@ class DiskCache(_Wrapper):
         }
         blob = json.dumps(payload, sort_keys=True, default=str)
         return hashlib.sha256(blob.encode()).hexdigest()
+
+
+# The only pickle in the codebase, accepted for a dev-only cache in a directory the
+# caller controls (DECISIONS.md D51, and the review's fix that keeps it out of the
+# workspace). Semgrep's avoid-pickle rule is silenced here and nowhere else.
+def _load(file: Path) -> LLMResponse:
+    # nosemgrep: python.lang.security.deserialization.pickle.avoid-pickle
+    return pickle.loads(file.read_bytes())
+
+
+def _store(file: Path, response: LLMResponse) -> None:
+    file.parent.mkdir(parents=True, exist_ok=True)
+    # nosemgrep: python.lang.security.deserialization.pickle.avoid-pickle
+    file.write_bytes(pickle.dumps(response))
 
 
 def _innermost(provider: Provider) -> Provider:
