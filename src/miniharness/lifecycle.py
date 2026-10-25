@@ -1,9 +1,12 @@
 """State: the agent's lifecycle, one class per state.
 
     Idle --start()--> Thinking --tool calls--> ActingOnTools --> Thinking ...
-                         |
-                         +--answer--> Done        (terminal)
-                         +--StopRun-> Stopped     (terminal)
+           |             |
+           |             +--answer--> agent.after_answer(): Done (terminal), or Thinking again
+           |             +--StopRun-> Stopped     (terminal)
+           +--(PlannerAgent)--> Planning --plan--> Thinking ...
+
+`start()` enters `agent.first_state()`: Thinking, or Planning for a PlannerAgent.
 
 Each state's `step()` does that state's work and returns the next state.
 The states call the agent's Template Method hooks (think, act, finish), so
@@ -12,15 +15,20 @@ subclasses that override a hook keep working.
 Stage 15 (Iterator): `iter_step()` is the same work as a generator. It yields
 whenever there is news mid-step (a streamed token), so the agent can hand
 control back to whoever is iterating, and *returns* the next state. Only
-Thinking has news mid-step; the default just runs `step()`.
+the model-calling states have news mid-step; the default just runs `step()`.
+
+Bonus stage (Bridge): every state that calls the model goes through one
+`model_call()` helper, so a new agent type's extra calls (Planning, a review
+round) stream, count toward `max_steps` and emit ModelCalled like the main loop.
 """
 
 import time
-from typing import TYPE_CHECKING, Any, Generator
+from typing import TYPE_CHECKING, Any, Generator, Iterator
 
 from miniharness.errors import StopRun
 from miniharness.events import ModelCalled, TokenStreamed
-from miniharness.types import Completed, LLMResponse, TextDelta, ToolCall
+from miniharness.providers import stream_from
+from miniharness.types import Completed, LLMResponse, Message, StreamChunk, TextDelta, ToolCall, ToolSpec
 
 if TYPE_CHECKING:
     from miniharness.agent import Agent
@@ -56,34 +64,76 @@ class Thinking(AgentState):
         return drain(self.iter_step(agent))
 
     def iter_step(self, agent):
-        if agent.model_calls >= agent.max_steps:
-            raise RuntimeError(f"Agent did not finish within {agent.max_steps} steps")
-        agent.model_calls += 1
-        started = time.monotonic()
         try:
-            if agent.stream:
-                response = yield from _think_streaming(agent)
-            else:
-                response = agent.think(agent.messages)
+            response = yield from model_call(agent, agent.messages)
         except StopRun as e:
             return Stopped(e.reason, str(e))
-        agent.events.emit(
-            ModelCalled(
-                model=agent.provider.model,
-                stop_reason=response.stop_reason,
-                tool_calls=len(response.message.tool_calls),
-                usage=response.usage,
-                duration_s=time.monotonic() - started,
-            )
-        )
         agent.messages.append(response.message)
         if response.stop_reason == "tool_calls":
             return ActingOnTools(response.message.tool_calls)
-        return Done(agent.finish(response))
+        return agent.after_answer(response)  # Done, unless the agent type wants another round
 
 
-def _think_streaming(agent: "Agent") -> Generator[None, None, LLMResponse]:
-    chunks = agent.think_stream(agent.messages)
+class Planning(AgentState):
+    """PlannerAgent's first state: one call for a plan, with no tools, then the normal loop.
+
+    The request for a plan is shown to the model but not kept. The conversation
+    gets the plan and a "carry it out" message, so roles still alternate
+    (system, user, assistant, user) for every provider.
+    """
+
+    name = "planning"
+
+    def step(self, agent):
+        return drain(self.iter_step(agent))
+
+    def iter_step(self, agent):
+        ask = Message(role="user", content=agent.plan_request())
+        try:
+            response = yield from model_call(agent, [*agent.messages, ask], tools={})
+        except StopRun as e:
+            return Stopped(e.reason, str(e))
+        # A fresh message: tool calls (if a provider made any anyway) and the raw
+        # payload are dropped, so no unanswered tool call is replayed later
+        plan = response.message.content.strip() or "(no plan)"
+        agent.messages.append(Message(role="assistant", content=plan))
+        agent.messages.append(Message(role="user", content=agent.execute_request))
+        return Thinking()
+
+
+def model_call(
+    agent: "Agent", messages: list[Message], tools: dict[str, ToolSpec] | None = None
+) -> Generator[None, None, LLMResponse]:
+    """One model call, with the bookkeeping every model-calling state shares.
+
+    Counts toward `max_steps`, streams when the agent streams (pausing at each
+    token), and emits ModelCalled. `tools=None` goes through the agent's
+    `think` / `think_stream` hooks, as the main loop does. A dict asks the
+    provider directly with exactly those tools (a side call, such as planning).
+    StopRun is left to the caller.
+    """
+    if agent.model_calls >= agent.max_steps:
+        raise RuntimeError(f"Agent did not finish within {agent.max_steps} steps")
+    agent.model_calls += 1
+    started = time.monotonic()
+    if agent.stream:
+        chunks = agent.think_stream(messages) if tools is None else stream_from(agent.provider, messages, tools)
+        response = yield from _consume_stream(agent, chunks)
+    else:
+        response = agent.think(messages) if tools is None else agent.provider.complete(messages, tools)
+    agent.events.emit(
+        ModelCalled(
+            model=agent.provider.model,
+            stop_reason=response.stop_reason,
+            tool_calls=len(response.message.tool_calls),
+            usage=response.usage,
+            duration_s=time.monotonic() - started,
+        )
+    )
+    return response
+
+
+def _consume_stream(agent: "Agent", chunks: Iterator[StreamChunk]) -> Generator[None, None, LLMResponse]:
     response = None
     try:
         for chunk in chunks:  # to the end, not just to Completed (see collect())
@@ -162,6 +212,8 @@ def from_snapshot(data: dict[str, Any]) -> AgentState:
         return Idle()
     if name == "thinking":
         return Thinking()
+    if name == "planning":
+        return Planning()
     if name == "acting_on_tools":
         return ActingOnTools([ToolCall(**c) for c in data["calls"]])
     if name == "done":

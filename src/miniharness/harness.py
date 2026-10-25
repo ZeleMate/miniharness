@@ -13,6 +13,10 @@ safe defaults:
 A facade simplifies; it doesn't lock anything away. Every subsystem it built
 stays a public attribute (`agent`, `toolbox`, `stack`, `tracker`, `events`),
 so the advanced case starts from the facade instead of from scratch.
+
+Bonus stage (Bridge): `agent_type=` picks the agent type (the abstraction)
+independently of `model` (the implementation): `Harness("anthropic",
+agent_type=PlannerAgent)`. The class is the factory, so no registry is needed.
 """
 
 import os
@@ -53,6 +57,7 @@ class Harness:
         checkpoint: str | Path | None = None,
         stream: bool = False,
         max_steps: int = 10,
+        agent_type: type[Agent] = Agent,
     ):
         """Every argument has a safe default; only `model` is usually worth setting.
 
@@ -64,6 +69,7 @@ class Harness:
         - `tools`: replaces the default tool set (the workspace's file tools included).
         - `console` / `trace`: print events live / append them to a JSONL file.
         - `checkpoint`: autosave the run here after every step; see `resume()`.
+        - `agent_type`: `Agent` (plain tool loop), `PlannerAgent` or `ReviewerAgent`; helpers stay plain.
         """
         self.stack = build_stack(
             model,
@@ -96,7 +102,7 @@ class Harness:
             if self.workspace is not None:
                 facts["workspace"] = str(self.workspace)
             system_prompt = builder.environment(**facts).build()
-        self.agent = Agent(
+        self.agent = agent_type(
             self.provider,
             system_prompt=system_prompt,
             tools=self._visible_tools(),

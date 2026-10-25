@@ -379,3 +379,48 @@ One entry per pattern, written when you apply it. Template:
   review a file in `workspace/`, then prints `h.report()`. Which subsystem did you have to reach *past*
   the facade for, and should that become a facade argument or stay an escape hatch?
 - **Your notes:**
+
+---
+
+## Bridge (bonus stage)
+
+- **Problem:** the README promised "a `ReActAgent` and a `PlannerAgent` can each use any provider"
+  back in stage 2, but there was only ever one agent class. The provider side had grown into a whole
+  hierarchy (three providers, seven wrappers); the agent side hadn't grown at all. Adding agent types
+  naively (an `OpenRouterPlanner`, an `AnthropicPlanner`, ...) is the N × M class explosion Bridge exists
+  to prevent.
+- **Shape:** the *abstraction* is `Agent`, the *implementor* is the `Provider` protocol, and the agent
+  holds one by composition. `PlannerAgent` and `ReviewerAgent` (agent_types.py) are *refined
+  abstractions*: they reshape the loop through two new Template Method hooks, `first_state()` (a
+  planner starts in a `Planning` state: one tool-less call) and `after_answer()` (a reviewer sends its
+  draft back for one review round). The concrete implementors (OpenRouter, Anthropic, Mock, and every
+  wrapper) needed no change. All model calls go through one `model_call()` helper: the abstraction's
+  operations are written in terms of the implementor's primitive, `complete()`/`stream()`.
+- **Bridge vs Strategy:** the code is the same shape (an object holding an interchangeable
+  collaborator). The difference is intent and the number of hierarchies. Strategy: *one* context
+  class swaps *one* algorithm (stage 2: which LLM answers). Bridge: *two* hierarchies that are both
+  expected to grow, joined by composition so they grow independently. Until a second agent type
+  existed, this codebase only had a Strategy. Writing `PlannerAgent` didn't add a single line to the
+  provider side, and that's the test that it's a Bridge.
+- **Bridge vs Adapter:** Adapter (stage 2) makes *existing* incompatible interfaces fit, after the
+  fact. Bridge is designed *up front* so that two sides never need fitting. Here they meet: the
+  adapters sit *inside* the concrete implementors.
+- **Live lesson:** the same task (`(17 * 23) + 4`) took 2 / 3 / 4 model calls and $0.00045 / $0.00062 /
+  $0.00095 as plain / planner / reviewer. And self-review shares the model's blind spots: asked for
+  Canberra's population, the reviewer kept an unverified number and only added a hedge (D197). The
+  Bridge makes "reviewer × any provider" free, but a critic on a *different* provider would need a
+  second implementor reference.
+- **Template Method, State and Bridge together:** the new types are subclasses (Template Method hooks),
+  the planning call is a lifecycle state (State), and the axis they vary is independent of the provider
+  (Bridge). Because planning is a state, it streams, is traced and checkpoints for free. Doing it inside
+  `initial_messages()` would have hidden it from the trace's cost summary (D189).
+- **Harness connection:** agent frameworks separate "agent architecture" from "model client" the same
+  way. LangGraph's prebuilt ReAct agent and its plan-and-execute and reflection recipes all take any chat
+  model; the OpenAI Agents SDK's `Agent` takes a `model` that can be any `Model` implementation
+  (LiteLLM for other providers). `Harness("anthropic", agent_type=PlannerAgent)` is that split.
+- **Try it:** write a `ConfirmingAgent` that, in `after_answer()`, asks a human (via `input()`) whether
+  the answer is good enough and, if not, appends their feedback and returns `Thinking()`. Run it on
+  `mock` and `openrouter`. Did you touch `providers/`? Then try a `PlannerReviewerAgent(PlannerAgent,
+  ReviewerAgent)`: does multiple inheritance compose the two hooks, and when would composition (D189)
+  have been better?
+- **Your notes:**

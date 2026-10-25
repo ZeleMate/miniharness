@@ -1187,7 +1187,7 @@ from `agent.messages` afterwards.
   ignores them.
 
 ### D166. Streaming is opt-in per agent: `Agent(stream=True)`, with a separate `think_stream()` hook
-**Status:** open (made during implementation)
+**Status:** open (made during implementation); the Bridge stage didn't trigger it (D201)
 - `Thinking` calls `think_stream()` when `agent.stream` is true and `think()` otherwise. `fork(stream=True)`
   is allowed.
 - **Risk:** a subclass that overrides only `think()` is bypassed once streaming is on. The alternative is
@@ -1395,3 +1395,152 @@ from `agent.messages` afterwards.
 - **D17 (global provider registry):** untouched. `build_stack()` calls the global `create_provider`.
   That's the bonus Singleton → dependency-injection stage.
 - **D160:** more visible now, see D179.
+
+---
+
+## Bonus stage: Bridge
+
+### D188. Two new agent types: `PlannerAgent` and `ReviewerAgent` (your call)
+**Status:** accepted
+- **Options:** Planner + Reviewer · Planner only · a text-protocol ReAct agent · Reviewer only.
+- **Why:** a Bridge needs *two* hierarchies that both grow. Until now only the provider side grew
+  (OpenRouter, Anthropic, Mock and the wrappers: cache, retry, budget, tracker, fallback, breaker, lazy proxy); the agent side was one class, so `Agent` → `Provider`
+  was stage 2's Strategy and nothing more. Two refined abstractions that vary *different ends* of the
+  loop (before it: a plan; after it: a review round) show that the abstraction side is a real axis.
+  3 agent types × any provider is 3 + N classes, not 3 × N.
+- **Why not ReAct:** with native tool calling, ReAct is mostly a prompt (Builder territory, stage 4).
+  A text-parsing ReAct agent would re-implement what the adapters already do. It would be the right
+  choice for a provider *without* tool support, which we don't have.
+- **Revisit when** a third type is wanted (e.g. a human-in-the-loop agent): it should need nothing
+  from the provider side.
+
+### D189. The types extend the loop through two new hooks and a `Planning` state (your call)
+**Status:** accepted
+- **Options:** new hooks (`first_state()`, `after_answer()`) + a `Planning` state · override the
+  existing hooks only (`initial_messages()` makes the plan call, `finish()` the review call) ·
+  composition (`Agent(provider, style=Planner())`).
+- **Why:** an extra model call made inside `initial_messages()` would run before `RunStarted`,
+  never stream, never emit `ModelCalled` (so the trace's cost summary under-counts it) and not count
+  toward `max_steps`. As a state, planning is a `step()` like any other: it streams, it's traced,
+  and it checkpoints (`{"name": "planning"}` restores to `Planning()`).
+- **Composition was rejected** because it turns the abstraction side into a second Strategy on one
+  class. Every hook would have to be forwarded, and GoF's abstraction side is a class hierarchy.
+  It *would* win if agent types needed to be combined (a planner that also reviews): with
+  subclasses that's a third class or multiple inheritance. **Revisit when** a combination is wanted.
+- `after_answer()` defaults to `Done(self.finish(response))`, so `finish()` keeps working for
+  subclasses that override it (tested by the existing 257 tests).
+
+### D190. The implementor interface is the `Provider` protocol, unchanged (your call)
+**Status:** accepted
+- **Options:** `Provider` as-is (`complete()` required, `stream()` optional via `stream_from()`) ·
+  a narrower text-in/text-out protocol for side calls · `stream()` in the protocol.
+- **Why:** the Bridge's implementor is the *primitive* interface the abstraction builds on. `complete()`
+  is exactly that, and every wrapper and provider already implements it. A narrower protocol
+  would need implementing by all of them and would skip usage and cost reporting. Making `stream()`
+  mandatory would reverse D157 and burden every test double.
+- **Honest note:** the implementor side needed **no new code** this stage. Every concrete
+  implementor (wrappers included) worked with the new agent types unchanged, which is the whole
+  promise of the pattern. The parametrized test runs 3 agent types × 4 providers (Mock, OpenRouter
+  and Anthropic over fake SDK clients, a wrapped Mock).
+- **Leak:** a planning call is a `complete(messages, tools={})`. Whether "no tools" is valid at that
+  point is provider knowledge (Anthropic rejects tool blocks without tool definitions), so planning
+  only happens at the start, where the conversation has no tool blocks yet (D194).
+
+### D191. `Harness(agent_type=PlannerAgent)`: the class is the factory (your call)
+**Status:** accepted
+- **Options:** an `agent_type=` class argument · string names through a registry
+  (`agent="planner"`) · examples only.
+- **Why:** a string registry would mirror `create_provider("provider:model")`, but it adds a second
+  global registry right before the stage about removing them (D17). The class already is a factory
+  and can be a user's own subclass. `examples/hello.py` maps `--agent tool-use|planner|reviewer` to a
+  class in a dict, which is where strings belong: at the edge.
+- `model` and `agent_type` are independent arguments. That's the Bridge as seen from the facade.
+
+### D192. One `model_call()` helper for every state that calls the model
+**Status:** accepted (made during implementation)
+- `Thinking` and `Planning` both go through `lifecycle.model_call(agent, messages, tools=None)`. It
+  checks `max_steps`, counts the call, streams (pausing at each token) when the agent streams, and
+  emits `ModelCalled`. `tools=None` goes through the `think`/`think_stream` hooks; a dict asks the
+  provider directly with exactly those tools.
+- **Why:** without it, every new model-calling state would copy the bookkeeping, and the first one to
+  forget `ModelCalled` would silently vanish from traces. This is the Bridge's "abstraction
+  operations implemented in terms of implementor primitives", written once.
+- **Cost:** side calls skip the `think` hooks, so a subclass that overrides `think()` (e.g. to log)
+  doesn't see the planning call. **Revisit when** a subclass needs to intercept *every* model call.
+
+### D193. The plan request is shown to the model but not kept
+**Status:** accepted (made during implementation)
+- The planning call sees the conversation plus a "write a numbered plan" request. The conversation
+  then gets the plan (assistant) and "now carry out the plan" (user). Roles stay strictly
+  alternating (system, user, assistant, user), which every provider accepts, and the plan stays in
+  context for every later step. **Tested** on the Anthropic wire format.
+- **Cost:** the stored history reads as if the model planned unprompted.
+
+### D194. The planning call gets no tools; the request names them; tool calls in a plan are dropped
+**Status:** accepted (made during implementation)
+- Our protocol has no `tool_choice`, so "no tools" is the only way to stop the model from acting
+  during planning. To plan *with* the tools, the request lists their names and descriptions.
+- If a provider makes tool calls anyway, the plan is stored as a fresh text-only message (no
+  `tool_calls`, no `raw`), so no unanswered tool call is replayed later (tested).
+- **Live:** deepseek wrote a 4-step plan naming `multiply`, `add` and `current_time`, then executed
+  it in the next call (two tools in parallel, then `add`).
+
+### D195. A review round is one more pass of the normal loop, with tools
+**Status:** accepted (made during implementation)
+- **Options:** one round (append a review request, go back to `Thinking`) · two calls (critique
+  without tools, then revise) · a separate `Reviewing` state.
+- **Why:** the revision may need tools to check a claim or fix a file, and the loop already knows how
+  to use them. No new state is needed: `after_answer()` appends the request and returns `Thinking()`.
+- **Cost:** the critique isn't a separate artifact; the model is asked to reply with only the final
+  answer. **Revisit when** the critique itself is wanted (e.g. to show it, or to stop on "approved").
+
+### D196. Whether a turn was reviewed is read from the conversation
+**Status:** accepted (made during implementation)
+- `ReviewerAgent` reviews once per turn: if the last user message is the review request, the turn was
+  reviewed. No counter on the agent, so `checkpoint()`, `restore()` and `fork()` need no changes
+  (tested: a fork restored mid-review doesn't review twice). Each `follow_up()` turn is reviewed again.
+- Only answers with `stop_reason == "end"` are reviewed; a refusal or a `max_tokens` cut-off
+  finishes as before.
+- **Cost:** a user who types the exact review request would skip the review. Unlikely enough.
+
+### D197. The reviewer reviews with the same provider (found live)
+**Status:** open
+- **Live:** asked for Canberra's population, deepseek drafted "approximately 481,000", was asked to
+  check unverified claims, couldn't (no tool for it), and kept the number with a hedge note. A model
+  reviewing itself shares its own blind spots.
+- A second provider for the critic (`ReviewerAgent(provider, critic=strong_model)`) would be a
+  second implementor reference: the abstraction side would then hold two implementors. Easy to add,
+  but it's the "per-request model choice" roadmap item, not this stage.
+- **Revisit when** the Strategy part 2 stage (cheap vs strong model per request).
+
+### D198. What was already Strategy, and what made it a Bridge
+**Status:** notes
+- Before this stage, `Agent(provider)` was a Bridge *in shape* (abstraction holds an implementor
+  by composition) but Strategy *in intent*: one context class, interchangeable algorithms for one
+  step. GoF's Bridge is designed up front so that two hierarchies can grow independently; Strategy
+  lets one object swap one behavior. The code that differs is only `agent_types.py`, two hooks and
+  one state.
+- **Live cost of the abstraction side:** the same task cost 2 / 3 / 4 model calls and
+  $0.00045 / $0.00062 / $0.00095 as `Agent` / `PlannerAgent` / `ReviewerAgent`. Planning and reviewing
+  don't pay for trivial tasks.
+
+### D199. `add_helper()` sub-agents stay plain `Agent`s
+**Status:** accepted (made during implementation)
+- `agent_type=` applies to the main agent only. A planning or reviewing helper doubles the helper's
+  calls inside every delegation, which nobody asked for. D184 (read-only helpers) is unchanged.
+- **Revisit when** a helper type is wanted: `add_helper(..., agent_type=)` is a one-line change.
+
+### D200. `examples/bridge.py` runs the grid
+**Status:** accepted (made during implementation)
+- Each agent type × each `-m` model, through `Harness`, with a report per cell. A failing cell (e.g.
+  the invalid Anthropic key) is reported and the grid carries on. `hello.py` gains `--agent`.
+
+### D201. How the Bridge stage touches the open decisions
+**Status:** notes
+- **D166 (`think()` bypassed when streaming):** still open. The two new agent types didn't override
+  thinking at all, they added *phases*, so the risk never came up. It's now narrower: side calls
+  bypass `think()` in both modes (D192).
+- **Unverified live:** Anthropic (the key in `.env` returns 401). The Anthropic wire format of a
+  planning run (no `tools` on the first request, alternating roles) is covered by fake-client tests.
+- **D17 (global provider registry) and D98 (bus wiring for a hand-built `Agent`):** untouched; they're
+  the Singleton → dependency injection stage.

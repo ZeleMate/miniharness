@@ -22,6 +22,11 @@ rewind the agent (and its file changes); `fork()` copies it to try a variant.
 Stage 15 (Iterator): with `stream=True` the model's text arrives as
 TokenStreamed events. `iter_run()` is the pull-based twin of the EventBus:
 the same events, but the caller asks for each one with a `for` loop.
+
+Bonus stage (Bridge): `Agent` is the abstraction, `Provider` the implementor.
+Agent *types* (agent_types.py) are refined abstractions: they reshape the
+loop with the `first_state()` and `after_answer()` hooks and reach the model
+only through the provider, so any agent type runs on any provider.
 """
 
 import copy
@@ -68,7 +73,7 @@ class Agent:
             self.messages = self.initial_messages(task)
             self.model_calls = 0
             self.events.emit(RunStarted(task))
-            self._transition(Thinking())
+            self._transition(self.first_state())
         return self.state
 
     def follow_up(self, text: str) -> AgentState:
@@ -210,6 +215,10 @@ class Agent:
 
     # --- hooks ---------------------------------------------------------------
 
+    def first_state(self) -> AgentState:
+        """Where `start()` enters the loop. A planner plans first (Planning)."""
+        return Thinking()
+
     def initial_messages(self, task: str) -> list[Message]:
         return [
             Message(role="system", content=self.system_prompt),
@@ -228,6 +237,10 @@ class Agent:
             Message(role="tool", content=self.tools.execute(tc), tool_call_id=tc.id)
             for tc in tool_calls
         ]
+
+    def after_answer(self, response: LLMResponse) -> AgentState:
+        """What follows a reply without tool calls: Done, or another round (a review)."""
+        return Done(self.finish(response))
 
     def finish(self, response: LLMResponse) -> str:
         if response.stop_reason not in ("end", "tool_calls"):

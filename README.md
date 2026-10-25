@@ -25,6 +25,9 @@ uv run examples/hello.py --delegate "Ask the researcher what notes.txt says"  # 
 uv run examples/hello.py --stream "Explain undo in two sentences"  # print tokens as they arrive
 uv run examples/stream.py --max-words 15 "Tell me a long story"    # pull the run with a for loop; stop early
 uv run examples/team.py                                           # writer and reviewer via a mediator
+uv run examples/hello.py --agent planner "What is (17 * 23) + 4?"  # plan first, then act
+uv run examples/hello.py --agent reviewer                         # draft, review once, final answer
+uv run examples/bridge.py -m openrouter -m anthropic              # every agent type × every provider
 uv run python -m miniharness.trace run.jsonl --html report.html   # summarize a trace
 ```
 
@@ -39,6 +42,10 @@ h = Harness("openrouter", budget=0.05, workspace="workspace", approve=True)
 print(h.run("Write a haiku about undo to haiku.txt"))
 print(h.report())   # calls, tokens, cost
 h.rewind()          # undo the file changes
+
+# The agent type and the provider vary independently (Bridge):
+from miniharness import PlannerAgent
+Harness("openrouter", agent_type=PlannerAgent).run("What is (17 * 23) + 4?")
 ```
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
@@ -50,8 +57,9 @@ Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip insta
 | `src/miniharness/harness.py` | `Harness`: one object that builds and runs a capable agent, every part still reachable (stage 16: Facade) |
 | `src/miniharness/trace.py` | Trace tree + visitors: `CostSummary`, `HtmlReport` (stage 14: Visitor) |
 | `src/miniharness/types.py` | Provider-neutral `Message`, `ToolCall`, `LLMResponse`; stream chunks `TextDelta`, `Completed` |
-| `src/miniharness/agent.py` | The agent (stage 1: Template Method), with an injected provider; `iter_run()` (stage 15: Iterator) |
-| `src/miniharness/lifecycle.py` | Agent lifecycle states: `start()` / `step()` (stage 9: State); generator `iter_step()` (stage 15) |
+| `src/miniharness/agent.py` | The agent (stage 1: Template Method), with an injected provider; `iter_run()` (stage 15: Iterator); `first_state()` / `after_answer()` hooks (Bridge) |
+| `src/miniharness/agent_types.py` | `PlannerAgent`, `ReviewerAgent`: agent types that run on any provider (bonus: Bridge) |
+| `src/miniharness/lifecycle.py` | Agent lifecycle states: `start()` / `step()` (stage 9: State); generator `iter_step()` (stage 15); `Planning` state and the shared `model_call()` (Bridge) |
 | `src/miniharness/providers/` | `Provider` protocol + OpenRouter, Anthropic, Mock (stage 2: Strategy); `create_provider()` registry (stage 3: Factory); usage/budget/retry/cache wrappers (stage 6: Decorator); `FallbackChain` (stage 7); `LazyProvider` (stage 8: Proxy); `CircuitBreaker` (stage 9: State); `build_stack()` recipe (stage 16); `stream()` on every provider and wrapper, `streaming.py` helpers (stage 15: Iterator) |
 | `src/miniharness/adapters/` | Our types ↔ OpenAI / Anthropic wire formats (stage 2: Adapter) |
 | `src/miniharness/checkpoint.py` | `Checkpoint`: snapshot, save, load (stage 11: Memento); `Agent.fork()` (Prototype) |
@@ -85,7 +93,7 @@ Only add a pattern once you feel the pain it solves.
 | 14 | Trace tree from events; cost summary and HTML report | Visitor ✅ |
 | 15 | Streaming tokens and events; `for event in agent.iter_run(task)` | Iterator ✅ |
 | 16 | `Harness("openrouter").run(task)` hides the wiring; `build_stack()` recipe | Facade ✅ |
-| + | Agent types × providers | Bridge |
+| + | Agent types × providers: `PlannerAgent`, `ReviewerAgent` on any provider | Bridge ✅ |
 | + | Global registry → dependency injection | Singleton (and why to avoid it) |
 | + | Per-request model choice (cheap vs strong) | Strategy, part 2 |
 

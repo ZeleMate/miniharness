@@ -12,6 +12,8 @@
     uv run examples/hello.py --checkpoint run.json --budget 0.0001      # stops; rerun to resume
     uv run examples/hello.py --delegate "Ask the researcher what notes.txt says"
     uv run examples/hello.py --stream "Explain undo in two sentences"   # tokens as they arrive
+    uv run examples/hello.py --agent planner "What is (17 * 23) + 4?"   # plan first, then act
+    uv run examples/hello.py --agent reviewer                           # draft, review, final
 
 Until stage 16 this file wired the provider stack, toolbox, policy, bus,
 prompt, checkpoints and sub-agent by hand. Now it only maps flags to
@@ -22,10 +24,12 @@ import argparse
 
 from dotenv import load_dotenv
 
-from miniharness import Harness
+from miniharness import Agent, Harness, PlannerAgent, ReviewerAgent
 from miniharness.providers import available_providers
 from miniharness.tools import MaxCalls
 from miniharness.types import ToolCall
+
+AGENT_TYPES = {"tool-use": Agent, "planner": PlannerAgent, "reviewer": ReviewerAgent}
 
 
 def terminal_approver(call: ToolCall) -> bool:
@@ -43,6 +47,7 @@ def main() -> None:
         "-m", "--model", default="openrouter",
         help=f"provider[:model], provider one of: {', '.join(available_providers())}",
     )
+    parser.add_argument("--agent", choices=AGENT_TYPES, default="tool-use", help="agent type (Bridge)")
     parser.add_argument("--budget", type=float, default=0.05, help="stop after spending this many USD")
     parser.add_argument("--cache", action="store_true", help="replay identical requests from .cache/llm")
     parser.add_argument("--fallback", help="provider[:model] to use if the main one fails or refuses")
@@ -69,11 +74,12 @@ def main() -> None:
         trace=args.trace,
         checkpoint=args.checkpoint,
         stream=args.stream,
+        agent_type=AGENT_TYPES[args.agent],
     )
     if args.delegate:
         h.add_helper("researcher", "Reads files in the workspace and summarizes them.",
                      ["Read files to answer. Reply with a short summary."])
-    print(f"[{type(h.stack.base).__name__} / {h.provider.model}]")
+    print(f"[{type(h.agent).__name__} on {type(h.stack.base).__name__} / {h.provider.model}]")
 
     if (saved := h.saved_run) is not None:
         print(f"  resuming from {args.checkpoint} ({saved.model_calls} model call(s) already made)")
