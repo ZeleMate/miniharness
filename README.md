@@ -56,11 +56,14 @@ Harness("cheap", registry=mine).run("Hi")
 
 Add dependencies with `uv add <pkg>` (or `uv add --dev <pkg>`), never `pip install`.
 
-## Study notebook
+## Study book
 
-[`docs/study_notebook.ipynb`](docs/study_notebook.ipynb) condenses the whole project for studying: every
-pattern with its problem, a small runnable example (offline, using `MockProvider`), the decisions to
-remember, the bugs that live runs found, and live lists of open decisions and exercises.
+[`docs/book/`](docs/book/README.md) is the project written up as a book to read: one chapter per stage,
+telling what we built, what broke, what we decided and why, and what live runs taught us, plus an
+epilogue with the cross-cutting lessons and open questions, and a cheat-sheet appendix.
+
+For hands-on review, [`docs/study_notebook.ipynb`](docs/study_notebook.ipynb) has a small runnable example
+per pattern (offline, using `MockProvider`):
 
 ```bash
 uv run --with jupyter jupyter lab docs/study_notebook.ipynb
