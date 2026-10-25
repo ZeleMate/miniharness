@@ -143,6 +143,7 @@ class Toolbox:
                 )
             else:
                 command = commands[i]
+                assert command.result is not None  # it ran without an error
                 self.history.append(command)
                 outputs.append(self._report(call, command.result.output, decision))
         return outputs
@@ -263,7 +264,7 @@ def execute_split(
     calls can still run together, and everything happens in the model's order (D221).
     """
     outputs: list[str] = []
-    for here, run in groupby(calls, key=handled_here):
-        run = list(run)
+    for here, group in groupby(calls, key=handled_here):
+        run = list(group)
         outputs += [answer(call) for call in run] if here else execute_all(inner, run)
     return outputs

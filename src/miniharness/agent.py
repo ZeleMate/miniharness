@@ -50,7 +50,14 @@ from miniharness.events import (
     StateChanged,
     agent_scope,
 )
-from miniharness.lifecycle import AgentState, Done, Idle, Thinking, from_snapshot
+from miniharness.lifecycle import (
+    AgentState,
+    Done,
+    Idle,
+    Stopped,
+    Thinking,
+    from_snapshot,
+)
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider, stream_from
 from miniharness.tools import Toolbox, ToolSet, default_tools, execute_all
@@ -133,9 +140,7 @@ class Agent:
                     except StopIteration as stop:
                         self._transition(stop.value)
                         if self.state.terminal:
-                            self.events.emit(
-                                RunFinished(self.state.name, self.state.answer)
-                            )
+                            self.events.emit(RunFinished(self.state.name, self.answer))
                         return
                 yield
         finally:
@@ -248,13 +253,22 @@ class Agent:
     def done(self) -> bool:
         return self.state.terminal
 
+    @property
+    def answer(self) -> str:
+        """The finished run's answer; a stopped run's says why it stopped."""
+        if not isinstance(self.state, Done | Stopped):  # a state check, as in follow_up
+            raise RuntimeError(  # noqa: TRY004
+                f"No answer yet: the agent is {self.state.name}"
+            )
+        return self.state.answer
+
     # --- the template method -------------------------------------------------
 
     def run(self, task: str) -> str:
         self.start(task)
         while not self.done:
             self.step()
-        return self.state.answer
+        return self.answer
 
     # --- hooks ---------------------------------------------------------------
 

@@ -171,7 +171,7 @@ class Team:
                 return (
                     member.state.answer
                 )  # e.g. the shared budget ran out: stop the team
-            last_answer = member.state.answer
+            last_answer = member.answer
             if self._result is not None:
                 return self._result
             queue.extend(self._outbox)

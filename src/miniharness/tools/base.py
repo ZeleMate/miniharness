@@ -33,7 +33,8 @@ class Tool:
     reversible: bool = False
     thread_safe: bool = True
 
-    def run(self, **arguments: Any) -> ToolResult:
+    # `*args` too, so mypy lets each tool narrow it to its own parameters
+    def run(self, *args: Any, **arguments: Any) -> ToolResult:
         raise NotImplementedError
 
     def undo(self, undo_info: Any) -> None:

@@ -50,7 +50,7 @@ class AgentTool(Tool):
         finally:
             self._computing = False
 
-    def run(self, task: str) -> ToolResult:  # type: ignore[override]
+    def run(self, task: str) -> ToolResult:
         depth = current_depth() + 1
         if depth > self.max_depth:
             raise RecursionError(

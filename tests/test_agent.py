@@ -13,6 +13,19 @@ def test_answers_without_tools():
     assert Agent(provider).run("Say hi") == "Hi!"
 
 
+def test_answer_only_exists_once_the_run_is_finished():
+    agent = Agent(
+        MockProvider(
+            [LLMResponse(Message(role="assistant", content="Hi!"), stop_reason="end")]
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="No answer yet"):
+        _ = agent.answer
+    agent.run("Say hi")
+    assert agent.answer == "Hi!"
+
+
 def test_runs_tool_then_answers():
     provider = MockProvider(
         [

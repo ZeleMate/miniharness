@@ -81,7 +81,7 @@ class OpenAIChatAdapter:
                     call[1] = tc.function.name or call[1]
                     call[2] += tc.function.arguments or ""
             finish_reason = choice.finish_reason or finish_reason
-        ordered = [tuple(calls[i]) for i in sorted(calls)]
+        ordered = [(call[0], call[1], call[2]) for _, call in sorted(calls.items())]
         yield Completed(self._response("".join(text), ordered, finish_reason, usage))
 
     def _response(

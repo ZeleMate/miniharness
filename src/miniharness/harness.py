@@ -102,12 +102,10 @@ class Harness:
             registry=registry,
         )
         self.events = events if events is not None else EventBus()
-        self._console = ConsolePrinter() if console else None
+        printer = ConsolePrinter() if console else None
         self._muted = False
-        if self._console is not None:
-            self.events.subscribe(
-                lambda event: None if self._muted else self._console(event)
-            )
+        if printer is not None:
+            self.events.subscribe(lambda event: None if self._muted else printer(event))
         if trace is not None:
             self.events.subscribe(JsonlTracer(trace))
 
@@ -154,7 +152,7 @@ class Harness:
         self.agent.follow_up(text)
         while not self.agent.done:
             self.agent.step()
-        return self.agent.state.answer
+        return self.agent.answer
 
     def stream(self, task: str) -> Iterator[Event]:
         """`for event in h.stream(task)`: the run's events, tokens included, as they happen.
@@ -180,7 +178,7 @@ class Harness:
         )  # a new process: its Toolbox history is gone
         while not self.agent.done:
             self.agent.step()
-        return self.agent.state.answer
+        return self.agent.answer
 
     @property
     def saved_run(self) -> Checkpoint | None:
@@ -259,6 +257,7 @@ class Harness:
     def _autosave(self, event: Event) -> None:
         # Between the main agent's steps only (D117), not a helper's; a finished run
         # deletes the file so the next one starts fresh
+        assert self.checkpoint_path is not None  # only subscribed when it is set
         if event.depth > 0:
             return
         if isinstance(event, StateChanged) and not self.agent.done:

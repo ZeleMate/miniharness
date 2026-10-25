@@ -6,7 +6,9 @@ from miniharness.types import LLMResponse, Message, ToolSpec
 
 
 class Provider(Protocol):
-    model: str
+    # Read-only, so a plain attribute and a wrapper's delegating property both qualify
+    @property
+    def model(self) -> str: ...
 
     def complete(
         self, messages: list[Message], tools: dict[str, ToolSpec]

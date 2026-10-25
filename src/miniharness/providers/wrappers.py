@@ -51,6 +51,11 @@ class _Wrapper:
     def model(self) -> str:
         return self.inner.model
 
+    def complete(
+        self, messages: list[Message], tools: dict[str, ToolSpec]
+    ) -> LLMResponse:
+        raise NotImplementedError  # every wrapper overrides it
+
     def stream(
         self, messages: list[Message], tools: dict[str, ToolSpec]
     ) -> Iterator[StreamChunk]:
