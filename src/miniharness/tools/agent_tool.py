@@ -22,6 +22,8 @@ class AgentTool(Tool):
         "required": ["task"],
     }
     reversible = False  # a sub-agent's run isn't undone as a unit (DECISIONS.md D127)
+    # Two sub-runs at once would interleave their events and share the provider stack (D216)
+    thread_safe = False
 
     def __init__(self, name: str, description: str, prototype: "Agent", max_depth: int = 3):
         self.name = name

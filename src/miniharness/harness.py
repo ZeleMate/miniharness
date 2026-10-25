@@ -53,6 +53,7 @@ class Harness:
         policies: Sequence[Policy] = (),
         read_only: bool = False,
         tools: list[Tool] | None = None,
+        tool_workers: int = 1,
         instructions: Sequence[str] = (),
         system_prompt: str | None = None,
         events: EventBus | None = None,
@@ -72,6 +73,7 @@ class Harness:
         - `approve`: tools with side effects are denied unless this is True or a callback (D176).
         - `policies`: extra policies checked before the default read-only/ask chain.
         - `tools`: replaces the default tool set (the workspace's file tools included).
+        - `tool_workers`: run up to this many read-only tool calls of one turn at once (D215).
         - `console` / `trace`: print events live / append them to a JSONL file.
         - `checkpoint`: autosave the run here after every step; see `resume()`.
         - `agent_type`: `Agent` (plain tool loop), `PlannerAgent` or `ReviewerAgent`; helpers stay plain.
@@ -102,7 +104,10 @@ class Harness:
         policy.policies[:0] = list(policies)
         # One bus for the agent and its tools, so ToolCalled is never silently lost (D98)
         self.toolbox = Toolbox(
-            tools if tools is not None else default_tools(self.workspace), policy=policy, events=self.events
+            tools if tools is not None else default_tools(self.workspace),
+            policy=policy,
+            events=self.events,
+            max_workers=tool_workers,
         )
         self.read_only = read_only
 

@@ -481,3 +481,41 @@ One entry per pattern, written when you apply it. Template:
   harnesses even coexist? Finally, find a place in your own agent code where something reaches for a
   global client or config, and write down who should create it and pass it in.
 - **Your notes:**
+
+## Concurrent tools (bonus stage, no new pattern)
+
+- **Problem:** a model often asks for several tools in one turn (read three files, then answer), and
+  they ran one after another, so the turn took as long as all of them added up. Stage 5 had kept it
+  that way on purpose (D39): the model once sent `write_file` and `read_file` of the same path together.
+- **Shape:** `Toolbox(max_workers=4)` and `Toolbox.execute_all(calls)`. The calls are cut into groups in
+  the model's order: consecutive read-only, thread-safe calls form one group that runs on a thread
+  pool; a call with side effects is a group of its own. Policies decide each group's calls first, in
+  order, on the agent's thread; outputs, `history` and `ToolCalled` events come out in the model's
+  order afterwards, however the threads finished. `Agent.act()` hands the Toolbox the whole turn, and
+  `Harness(tool_workers=4)` turns it on (D215-D222).
+- **Which earlier patterns made it cheap:** *Command* (stage 5): a call is already an object that holds
+  everything needed to run it, so handing it to another thread is just `pool.map(...)` over commands.
+  The `side_effects` flag from the same stage decides the grouping, so no tool had to change.
+  *Observer* (stage 10): emitting from one thread, in a fixed order, keeps every subscriber
+  lock-free. *Proxy* (stage 8) is where it nearly broke silently: `ToolboxView` and a team member's
+  tools only had `execute()`, so behind them every call would have run alone with no error anywhere.
+  Each proxy now passes on runs of calls as one batch (D73's lesson again: anything that wraps an
+  object must keep up with its interface).
+- **The ContextVar trap:** worker threads start with an *empty* context, so a tool running in the pool
+  saw no agent at all (`current_depth() == -1`). The fix is `copy_context()` per call, made on the
+  calling thread: copying inside the worker would copy the worker's empty context, and one shared copy
+  can't be entered by two threads at once (D220). A test proves it: remove the copy and it fails.
+- **What stayed sequential, and why:** sub-agents (`AgentTool.thread_safe = False`). Two at once would
+  interleave two runs' events on one bus (the trace builder pairs by position, D148) and share a
+  provider stack that has check-then-act races (`BudgetGuard`, `LazyProvider`, the breaker). That's
+  the next stage, if wanted (D216).
+- **Where Python shapes it:** threads, not asyncio (D217). Every tool and provider is synchronous, and
+  I/O-bound tools release the GIL while they wait, so a plain `ThreadPoolExecutor` gives the real
+  speedup without `async def` spreading through the codebase.
+- **Harness connection:** real harnesses do the same split. Claude Code runs read-only tools (reads,
+  searches) in parallel and anything that edits or runs commands one at a time, and its tool
+  definitions say which kind each tool is.
+- **Try it:** give `Toolbox` a slow read-only tool (`time.sleep(1)`) and time a turn of three calls
+  with `max_workers=1` and `max_workers=3`. Then put a `write_file` between them and predict the
+  time before you run it.
+- **Your notes:**

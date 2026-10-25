@@ -3,7 +3,7 @@
 from collections.abc import Iterable, Mapping
 
 from miniharness.tools.base import Tool
-from miniharness.tools.toolbox import Toolbox
+from miniharness.tools.toolbox import Toolbox, execute_split
 from miniharness.types import ToolCall, ToolSpec
 
 
@@ -37,7 +37,13 @@ class ToolboxView:
         return {name: spec for name, spec in self.toolbox.specs().items() if name in self.allow}
 
     def execute(self, call: ToolCall) -> str:
-        if call.name not in self.allow:
-            # Same message as a missing tool: don't confirm hidden tools exist
-            return f"Error: unknown tool {call.name!r}"
-        return self.toolbox.execute(call)
+        return self.execute_all([call])[0]
+
+    def execute_all(self, calls: list[ToolCall]) -> list[str]:
+        # Allowed calls go on in batches, so they can still run together (D221)
+        return execute_split(calls, lambda call: call.name not in self.allow, _hidden, self.toolbox)
+
+
+def _hidden(call: ToolCall) -> str:
+    # Same message as a missing tool: don't confirm hidden tools exist
+    return f"Error: unknown tool {call.name!r}"

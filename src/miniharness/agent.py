@@ -31,6 +31,9 @@ only through the provider, so any agent type runs on any provider.
 Bonus stage (Singleton → dependency injection): every collaborator is passed
 in, and the one the agent builds itself, the default Toolbox, it also wires to
 its own event bus.
+
+Bonus stage (concurrent tools): `act()` hands the Toolbox a whole turn's calls,
+so it can run the read-only ones together (`Toolbox(max_workers=...)`).
 """
 
 import copy
@@ -42,7 +45,7 @@ from miniharness.events import Event, EventBus, RunFinished, RunStarted, StateCh
 from miniharness.lifecycle import AgentState, Done, Idle, Thinking, from_snapshot
 from miniharness.prompts import default_prompt
 from miniharness.providers import Provider, stream_from
-from miniharness.tools import Toolbox, ToolSet, default_tools
+from miniharness.tools import Toolbox, ToolSet, default_tools, execute_all
 from miniharness.types import LLMResponse, Message, StreamChunk, ToolCall
 
 
@@ -239,9 +242,11 @@ class Agent:
         return stream_from(self.provider, messages, self.tools.specs())
 
     def act(self, tool_calls: list[ToolCall]) -> list[Message]:
+        # The whole turn at once, so a Toolbox can run read-only calls together
+        outputs = execute_all(self.tools, tool_calls)
         return [
-            Message(role="tool", content=self.tools.execute(tc), tool_call_id=tc.id)
-            for tc in tool_calls
+            Message(role="tool", content=output, tool_call_id=tc.id)
+            for tc, output in zip(tool_calls, outputs, strict=True)  # one output per call
         ]
 
     def after_answer(self, response: LLMResponse) -> AgentState:

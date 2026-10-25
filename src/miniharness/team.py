@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from miniharness.events import MessageRouted
 from miniharness.lifecycle import Done, Stopped
-from miniharness.tools.toolbox import ToolSet
+from miniharness.tools.toolbox import ToolSet, execute_split
 from miniharness.types import ToolCall, ToolSpec
 
 if TYPE_CHECKING:
@@ -69,11 +69,19 @@ class _MemberTools:
         return specs
 
     def execute(self, call: ToolCall) -> str:
+        return self.execute_all([call])[0]
+
+    def execute_all(self, calls: list[ToolCall]) -> list[str]:
+        # The member's own calls go on in batches, so they can still run together (D221)
+        return execute_split(calls, self._is_team_call, self._team_call, self.inner)
+
+    def _is_team_call(self, call: ToolCall) -> bool:
+        return call.name == "send_message" or (call.name == "approve" and self.member in self.team.finishers)
+
+    def _team_call(self, call: ToolCall) -> str:
         if call.name == "send_message":
             return self.team._send(self.member, call.arguments.get("to", ""), call.arguments.get("text", ""))
-        if call.name == "approve" and self.member in self.team.finishers:
-            return self.team._approve(self.member)
-        return self.inner.execute(call)
+        return self.team._approve(self.member)
 
 
 class Team:

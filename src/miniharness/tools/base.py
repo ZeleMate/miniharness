@@ -21,6 +21,8 @@ class Tool:
 
     Defaults describe a read-only tool. A tool that changes the world sets
     `side_effects = True`, and `reversible = True` only if it implements undo().
+    A read-only tool that mustn't run on two threads at once sets
+    `thread_safe = False` (DECISIONS.md D216).
     """
 
     # Usually set as class attributes; instances may set or compute them (AgentTool)
@@ -29,6 +31,7 @@ class Tool:
     parameters: dict[str, Any] = {"type": "object", "properties": {}}
     side_effects: bool = False
     reversible: bool = False
+    thread_safe: bool = True
 
     def run(self, **arguments: Any) -> ToolResult:
         raise NotImplementedError

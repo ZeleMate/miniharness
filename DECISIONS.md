@@ -310,7 +310,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   tells the model the file is longer. A smarter version would support line ranges.
 
 ### D39. Parallel tool calls run sequentially, in the order the model sent them
-**Status:** open (observed live in this stage)
+**Status:** superseded by D215 (concurrent read-only calls, bonus stage)
 - The model sent `write_file` and `read_file` *in the same turn*. That worked only
   because we execute them in order. Running them concurrently would race.
 - **Revisit when:** tools become async or slow. Options include running only
@@ -1751,3 +1751,117 @@ from `agent.messages` afterwards.
   (robustness, not security).
 - **Tests added:** a cache inside the workspace, the default cache with `workspace="."`, a symlink into
   the workspace, a cache beside it (allowed), and a crafted trace's state.
+
+---
+
+## Bonus stage: Concurrent tools
+
+### D215. Consecutive read-only calls run together; a call with side effects runs alone (your call)
+**Status:** accepted; supersedes D39
+- **Context:** a model often asks for several tools in one turn (read three files, then answer). Run
+  one after another, the turn takes as long as all of them added up. D39 kept them sequential because
+  stage 5 saw `write_file` and `read_file` of the same path in one turn, which would race.
+- **Options:** consecutive read-only calls together, side effects as barriers · every call at once ·
+  a new per-tool opt-in flag (`parallel_safe = False` by default).
+- **Chosen:** the calls are cut into groups in the model's order. A run of consecutive read-only calls
+  is one group; each call with side effects is a group of its own. Groups run one after another.
+  `[read a, read b, write c, read c]` is `{read a, read b}`, then `{write c}`, then `{read c}`, so
+  `read c` always sees the write, as it did before.
+- **Why:** it reuses `side_effects`, the flag every tool already sets correctly (the default policy
+  and undo depend on it). "Everything at once" brings D39's race back. An opt-in flag is the most
+  precise, but nothing gets faster until every tool author opts in.
+- **Costs:** two reads on either side of a write don't merge, even when they touch other files: the
+  harness can't tell which paths a call touches. A read-only tool that isn't thread-safe needs the
+  opt-out of D216.
+
+### D216. Leaf tools only: `AgentTool` stays sequential, through a `thread_safe` flag (your call; the flag made during implementation)
+**Status:** accepted; parallel sub-agents are the logged next step
+- **Options:** leaf tools first · sub-agents (read-only helpers) in parallel too.
+- **Why leaf tools first:** two sub-agents running at once would put two runs' events on one bus at
+  the same time. The trace builder pairs a nested run with the parent's *next* `ToolCalled` (D148), so
+  interleaved runs would pair up wrongly. Doing it right needs a run id on every event and a
+  parent-call id on `RunStarted`, which changes the trace format (D147). The shared provider stack
+  isn't thread-safe either: `LazyProvider` could build twice (D78), the breaker's half-open state could
+  let several trials through (D87), and `BudgetGuard` checks the spend and then calls, so two runs
+  could both pass the check and overspend together. That's roughly three times the work, and leaf
+  tools already show which earlier decisions depend on running one at a time.
+- **The flag:** `Tool.thread_safe = True` by default; `AgentTool` sets it to `False`. A call joins a
+  parallel group only if its tool has no side effects *and* is thread-safe. An `isinstance(tool,
+  AgentTool)` check in the Toolbox would have worked too, but a flag also lets a read-only tool that
+  holds shared state (a client without a lock) opt out.
+- **Revisit when** parallel helpers are wanted: run ids on events, id-based trace pairing, and locks
+  in `LazyProvider`, `CircuitBreaker` and `BudgetGuard`.
+
+### D217. Threads, not asyncio (your call)
+**Status:** accepted
+- **Options:** a `ThreadPoolExecutor` in the Toolbox · asyncio (`async def` tools and an event loop).
+- **Why:** every tool, provider and `Agent.step()` is synchronous. Asyncio would mean `async def` all
+  the way up, or `asyncio.to_thread()` around each synchronous tool, which is a thread pool with an
+  event loop on top. The tools worth overlapping wait on I/O (files, HTTP), and Python releases the GIL
+  while waiting, so threads give a real speedup for them. CPU-bound tools (`add`) gain nothing, but
+  they're fast anyway.
+- **Revisit when** tools or providers become async for another reason (streaming several model calls
+  at once, for example).
+
+### D218. A group's `ToolCalled` events are emitted after the group finishes, in the model's order (your call)
+**Status:** accepted
+- **Options:** in the model's call order, after the group · live, as each call finishes.
+- **Why:** event order stays deterministic, so traces from two runs compare line by line and the
+  existing tests keep their meaning. Handlers are only ever called from the agent's own thread, so the
+  `EventBus`, the console printer and the JSONL tracer need no locks (D99 stays true).
+- **Costs:** a slow call delays the events of the fast ones in its group. A console watching a long
+  read sees nothing until the whole group is done.
+- **Revisit when** there's a live UI that should show each result the moment it arrives. That would
+  need a lock in `EventBus.emit()` and observers that don't assume an order.
+
+### D219. Policies decide each group's calls in order, on the calling thread, before the group runs
+**Status:** accepted (made during implementation)
+- **Why:** a policy chain is stateful (`MaxCalls` counts) and an approver may ask a human with
+  `input()`. Deciding in the worker threads would race the counter and ask questions in random order
+  from random threads. Deciding per *group*, not for the whole turn at once, keeps today's timing for
+  side effects: a write's approval is asked right before it runs, after the reads before it finished.
+- Unknown and denied calls never reach a worker; their outputs are ready before the group starts.
+
+### D220. Each worker runs in a copy of the caller's context
+**Status:** accepted (made during implementation)
+- **Trap:** a `ContextVar` (`agent_scope`, D123) is *not* inherited by a thread pool's threads. Without
+  a copy, a tool running in a worker sees no agent at all (`current_depth() == -1`), and anything it
+  emits would be tagged with an empty agent name at depth 0.
+- **Fix:** `contextvars.copy_context()` per submitted call, and `ctx.run(command.execute)`. One copy
+  *per call*, not one shared: a `Context` can't be entered by two threads at once (it raises
+  `RuntimeError`). No leaf tool emits events today, but it costs one line and is required the day
+  sub-agents run in parallel (D216).
+
+### D221. Opt-in: `Toolbox(max_workers=1)` by default; `execute_all()` is optional on a `ToolSet`
+**Status:** accepted (made during implementation)
+- **Opt-in** like streaming (D166): with `max_workers=1` there are no groups at all, so each call is
+  decided, run and reported before the next one is looked at, exactly as before (an early draft grouped
+  anyway and only skipped the pool, which delayed a read's `ToolCalled` until the next read had run).
+  `Harness(tool_workers=4)` turns it on through the facade.
+- **Shape:** `Toolbox.execute_all(calls) -> list[str]`, and `execute(call)` is now `execute_all([call])[0]`,
+  so there is one code path. `Agent.act()` calls `execute_all()` when the tool set has it and falls
+  back to one `execute()` per call, so a hand-written `ToolSet` keeps working (the same "optional
+  method" test as `mark()` in `checkpoint()`).
+- **Proxies must forward it** (D73 again): `ToolboxView` and a team member's tools answer some calls
+  themselves (a hidden tool, `send_message`) and pass the rest on. Both now pass on *runs* of
+  consecutive calls as one batch, so the parallelism survives the proxy and the event order doesn't
+  change. Without this, a `Harness(read_only=True)` agent would silently lose all concurrency.
+
+### D222. One thread pool per parallel group, not one per Toolbox
+**Status:** accepted (made during implementation)
+- **Why:** a pool owned by the Toolbox would need a `close()` that every owner remembers to call, or
+  threads left waiting at exit. A pool per group starts a few threads per turn, which is microseconds
+  next to a model call. A group of one call, or `max_workers=1`, never makes a pool.
+- **Revisit when** turns become so frequent that thread start-up shows in a profile.
+
+### D223. How this stage touches the decisions that relied on D39
+**Status:** notes
+- **Undo history (D36, D113):** commands are appended in the model's order after their group, not in
+  finish order, so `history` reads the same however the threads were scheduled. Only read-only calls
+  ever overlap, and `undo` skips those.
+- **Checkpoints (D117):** unchanged. A checkpoint is still taken between steps; a crash mid-group
+  re-runs reads, which is harmless. Writes still run alone, so at-least-once is no worse.
+- **Trace pairing (D148), the pull view (D171), `LazyProvider` (D78), the breaker (D87):** still true,
+  because no sub-agent and no model call ever runs in a worker (D216).
+- **`MaxCalls` (D62):** policies are still checked before a command is created (D60), and `MaxCalls`
+  counts in the model's order (D219).

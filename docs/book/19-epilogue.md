@@ -94,13 +94,13 @@ decision log, and they're the first things to re-check once the key is replaced.
 
 ## The questions left open
 
-Twenty-five decisions are still open. They're not failures: each one is a design question the project chose
+Twenty-four decisions are still open. They're not failures: each one is a design question the project chose
 not to answer yet, with its options and trade-offs already written down. Grouped by theme:
 
-**Concurrency and execution guarantees.** Tools run one at a time, and a surprising amount of the design
-depends on that (D39): trace building, event order, checkpoint semantics. Resuming re-runs pending tool
-calls, so execution is at-least-once, not exactly-once (D117). History has no run boundaries and lives only
-in memory (D40).
+**Concurrency and execution guarantees.** Read-only tool calls can now run together, but sub-agents still
+run one at a time, and a surprising amount of the design depends on that (D216): trace building, the shared
+provider stack, budget checks. Resuming re-runs pending tool calls, so execution is at-least-once, not
+exactly-once (D117). History has no run boundaries and lives only in memory (D40).
 
 **Streaming edge cases.** Retry and fallback can't switch after the first token (D159). An abandoned stream
 has unknown cost (D160), and with the facade's default budget that blocks the next call (D179). Only text
@@ -126,9 +126,11 @@ errors (D101).
 
 Three directions would each teach something new:
 
-1. **Concurrent tools (D39).** Run read-only tool calls in parallel with `asyncio`, and watch which earlier
-   decisions break: trace pairing, event order, checkpoints. It's the best possible test of how much a
-   design depends on an assumption nobody wrote down.
+1. **Parallel sub-agents (D216).** Read-only *leaf* tools already run together (`Toolbox(max_workers=...)`,
+   D215-D223, built after this book was written; the first step taught the ContextVar trap of D220). Letting
+   sub-agents overlap is where the earlier decisions really break: trace pairing (D148), budget checks,
+   the lazy proxy and the breaker. It's the best possible test of how much a design depends on an
+   assumption nobody wrote down.
 2. **Asynchronous approval (D91, D118).** Add an `AwaitingApproval` state and an approver that can say
    "later". It combines State, Memento and Chain of Responsibility into a feature real harnesses need.
 3. **Validators for teams (D143).** Let `approve()` run code checks first, so the mediator rejects a

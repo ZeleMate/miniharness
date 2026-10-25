@@ -79,7 +79,7 @@ epilogue with the cross-cutting lessons and open questions, and a cheat-sheet ap
 | `src/miniharness/observers.py` | `ConsolePrinter`, `JsonlTracer` |
 | `src/miniharness/prompts.py` | `SystemPromptBuilder` + `default_prompt()` director (stage 4: Builder) |
 | `src/miniharness/team.py` | `Team` mediator: peers talk only through it (stage 13: Mediator) |
-| `src/miniharness/tools/` | `Tool` classes, `ToolCommand`, and the `Toolbox` invoker with undo (stage 5: Command); `PolicyChain` permissions (stage 7: Chain of Responsibility); `ToolboxView` (stage 8: Proxy); `AgentTool` (stage 12: Composite) |
+| `src/miniharness/tools/` | `Tool` classes, `ToolCommand`, and the `Toolbox` invoker with undo (stage 5: Command); `PolicyChain` permissions (stage 7: Chain of Responsibility); `ToolboxView` (stage 8: Proxy); `AgentTool` (stage 12: Composite); read-only calls of one turn run together with `Toolbox(max_workers=...)` (bonus: concurrent tools) |
 | `tests/test_singleton.py` | A textbook Singleton kept as a specimen, next to the DI that replaced it |
 | `DECISIONS.md` | Architecture decision log: options, trade-offs, open questions |
 | `PATTERNS.md` | Your learning journal |
@@ -108,6 +108,7 @@ Only add a pattern once you feel the pain it solves.
 | 16 | `Harness("openrouter").run(task)` hides the wiring; `build_stack()` recipe | Facade ✅ |
 | + | Agent types × providers: `PlannerAgent`, `ReviewerAgent` on any provider | Bridge ✅ |
 | + | Global registry → injected `ProviderRegistry`; agents wire what they build | Singleton (and why to avoid it) ✅ |
+| + | Read-only tool calls of one turn run together; side effects stay in order | No new pattern: concurrency on top of Command ✅ |
 | + | Per-request model choice (cheap vs strong) | Strategy, part 2 |
 
 ## Rules of the road
