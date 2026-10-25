@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from miniharness import Agent, LLMResponse, Message, ToolCall
@@ -188,6 +190,23 @@ def test_html_report_escapes_untrusted_text(traced):
 
     assert "<script>alert" not in page and "&lt;script&gt;" in page
     assert "<img src=x" not in page
+
+
+def test_html_report_escapes_a_run_state_from_a_crafted_trace(tmp_path):
+    # The harness only writes "done" or "stopped", but a trace file is just text
+    path = tmp_path / "crafted.jsonl"
+    records = [
+        {"event": "RunStarted", "agent": "main", "depth": 0, "task": "go"},
+        {"event": "RunFinished", "state": "x'><script>alert(1)</script>", "answer": ""},
+    ]
+    path.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+    report = HtmlReport()
+
+    load_trace(path).accept(report)
+    page = report.page()
+
+    assert "<script>alert" not in page
+    assert "class='run x&#x27;&gt;" in page  # can't close the attribute
 
 
 def test_nodes_dispatch_to_the_matching_visit_method():

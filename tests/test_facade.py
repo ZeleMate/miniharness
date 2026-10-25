@@ -149,6 +149,32 @@ def test_file_tools_only_come_with_a_workspace(tmp_path):
     assert "write_file" in harness([], workspace=tmp_path).toolbox.tools
 
 
+def test_a_cache_inside_the_workspace_is_rejected(tmp_path):
+    # The agent could write a pickle there that runs on a later cache hit (D214)
+    with pytest.raises(ValueError, match="inside the workspace"):
+        harness([], workspace=tmp_path, cache=tmp_path / "cache")
+    assert not (tmp_path / "cache").exists()  # rejected before anything is created
+
+
+def test_the_default_cache_is_rejected_when_the_workspace_is_the_cwd(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(ValueError, match="inside the workspace"):
+        harness([], workspace=".", cache=True)
+
+
+def test_a_symlink_into_the_workspace_doesnt_hide_the_cache(tmp_path):
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (tmp_path / "link").symlink_to(workspace)
+    with pytest.raises(ValueError, match="inside the workspace"):
+        harness([], workspace=workspace, cache=tmp_path / "link" / "cache")
+
+
+def test_a_cache_beside_the_workspace_is_fine(tmp_path):
+    h = harness([], workspace=tmp_path / "ws", cache=tmp_path / "cache")
+    assert h.stack.cache is not None
+
+
 def test_side_effects_are_denied_unless_approved(tmp_path):
     h = harness([call("write_file", path="a.txt", content="hi"), answer("tried")], workspace=tmp_path)
 

@@ -1725,3 +1725,29 @@ from `agent.messages` afterwards.
   stage-2 promise was made in `PATTERNS.md`, not the README; three tools before stage 5, not four; the
   budget belongs to a `Harness`, not to one run; the epilogue's "found by live runs" table now says which
   bugs were found by rereading code; dated names (Claude Code's Agent tool, the OpenAI Agents SDK).
+
+### D214. Hardening from a security audit
+**Status:** accepted (your call to fix; the shapes below were made during implementation)
+- **Audit:** the whole repo, not just a diff. No high- or medium-severity issue: the workspace sandbox
+  (D31) catches `..`, absolute paths and symlinks; there is no shell tool; side effects are
+  denied without an approver; checkpoints are JSON; secrets come from the environment and none are in
+  the git history. Two low-severity gaps were fixed:
+- **The pickle cache could sit inside the workspace.** `DiskCache` unpickles on a hit, and protocol-0
+  pickle is plain ASCII, so `write_file` could plant one. `Harness(workspace=".", cache=True)` put
+  `.cache/llm` right inside the agent's reach. Exploiting it also needed an approved write and the
+  exact SHA-256 key of a later request, so it was hard, not impossible. **Options:** reject the
+  overlap in `Harness` · make `DiskCache` itself check (but it doesn't know the workspace) · switch the
+  cache to JSON (removes the risk, but every response type would need a serializer, like checkpoints).
+  **Chosen:** `Harness` raises `ValueError` before it creates anything, comparing resolved paths so a
+  symlink can't hide the overlap. **Costs:** only the facade checks; `build_stack(cache=...)` with
+  hand-built file tools is still on you, as `DiskCache`'s docstring says. JSON stays the fix if the
+  cache ever stops being development-only.
+- **`HtmlReport` didn't escape a run's state.** The only trace field written into the page raw, in a
+  `class` attribute and in the text. The harness only writes `done`/`stopped`, so only a hand-crafted
+  trace file could inject; now it goes through `_e()` like everything else.
+- **Left as is:** `ConsolePrinter` prints model and tool text without stripping terminal escape
+  sequences (lines are already cut to 80 characters and modern terminals limit the damage); a tool call
+  whose arguments are JSON but not an object crashes `Team` instead of becoming an error message
+  (robustness, not security).
+- **Tests added:** a cache inside the workspace, the default cache with `workspace="."`, a symlink into
+  the workspace, a cache beside it (allowed), and a crafted trace's state.

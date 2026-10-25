@@ -256,8 +256,8 @@ class HtmlReport(TraceVisitor):
         cost = CostSummary()
         cost.visit_run(node)  # cost of this run, including its sub-agents
         self.parts.append(
-            f"<details open class='run {node.state}'><summary><b>{_e(node.agent)}</b>: {_e(_short(node.task))}"
-            f" <span class='meta'>[{node.state}] · {_money(cost.total().cost_usd)}</span></summary>"
+            f"<details open class='run {_e(node.state)}'><summary><b>{_e(node.agent)}</b>: {_e(_short(node.task))}"
+            f" <span class='meta'>[{_e(node.state)}] · {_money(cost.total().cost_usd)}</span></summary>"
         )
         super().visit_run(node)
         if node.answer:

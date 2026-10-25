@@ -51,7 +51,7 @@ you want every detail.
 
 Python 3.13, managed entirely by `uv`. The OpenAI SDK pointed at OpenRouter, so cheap models like DeepSeek
 could do most of the live testing, plus the Anthropic SDK, included specifically to create the need for
-an Adapter, because its message format differs from OpenAI's in interesting ways. pytest throughout: 316
+an Adapter, because its message format differs from OpenAI's in interesting ways. pytest throughout: 321
 tests by the end, all running offline in about a second.
 
 ## A note on what went wrong

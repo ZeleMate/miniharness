@@ -77,10 +77,14 @@ class Harness:
         - `agent_type`: `Agent` (plain tool loop), `PlannerAgent` or `ReviewerAgent`; helpers stay plain.
         - `registry`: where `model` and `fallback` specs are looked up (default: the built-ins).
         """
+        cache_dir = Path(".cache/llm") if cache is True else (Path(cache) if cache else None)
+        self.workspace = Path(workspace) if workspace is not None else None
+        if cache_dir is not None and self.workspace is not None:
+            _check_cache_outside(cache_dir, self.workspace)
         self.stack = build_stack(
             model,
             budget=budget,
-            cache=Path(".cache/llm") if cache is True else (cache or None),
+            cache=cache_dir,
             fallback=fallback,
             registry=registry,
         )
@@ -92,7 +96,6 @@ class Harness:
         if trace is not None:
             self.events.subscribe(JsonlTracer(trace))
 
-        self.workspace = Path(workspace) if workspace is not None else None
         if self.workspace is not None:
             self.workspace.mkdir(parents=True, exist_ok=True)
         policy = default_policy(approver=_approver(approve))
@@ -240,6 +243,16 @@ class Harness:
             self.agent.checkpoint().save(self.checkpoint_path)
         elif isinstance(event, RunFinished) and event.state == "done":
             self.checkpoint_path.unlink(missing_ok=True)
+
+
+def _check_cache_outside(cache_dir: Path, workspace: Path) -> None:
+    # The cache is unpickled on a hit, so an agent that could write into it could
+    # plant code that runs on a later run (D214). resolve() also catches symlinks.
+    if cache_dir.resolve().is_relative_to(workspace.resolve()):
+        raise ValueError(
+            f"The cache {str(cache_dir)!r} is inside the workspace {str(workspace)!r}: the agent's file tools "
+            "could write a pickle that runs on load. Put the cache outside the workspace."
+        )
 
 
 def _approver(approve: Approve) -> Callable[[ToolCall], bool] | None:
