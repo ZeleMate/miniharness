@@ -1886,8 +1886,13 @@ from `agent.messages` afterwards.
   cross-file analysis, and the registry rulesets aren't versioned, so a new rule can turn a run red
   without a commit. **Correction:** Semgrep Cloud's managed scans were already on for this repo
   (the `semgrep-cloud-platform/scan` check, run by Semgrep's GitHub App on its own servers). That
-  doesn't show in the repo or in a token's view of its secrets, which is why it was missed. So
-  there are two Semgrep scans for now, and which one stays is still open.
+  doesn't show in the repo or in a token's view of its secrets, which is why it was missed.
+- **Both Semgrep scans stay (your call).** **Options:** both · Semgrep Cloud only · the CI job only.
+  **Why:** they answer different questions. Semgrep Cloud adds cross-file analysis and supply-chain
+  reachability, with findings in its dashboard and no token in CI. The `sast` job fails the run on
+  any finding, runs the same way locally, and keeps working if the app is removed. **Cost:** a
+  finding can show up twice, and a suppression may need a `nosemgrep` comment (which both read) or a
+  triage in the dashboard, which only Semgrep Cloud reads.
 - **Ruff (your call): its defaults, line length 88.** Ruff 0.17's default rule set is broad (about
   400 rules), so no `select` list. One mechanical formatting commit, listed in
   `.git-blame-ignore-revs`. RUF012 is off: `Tool.parameters` is a declarative class attribute.
