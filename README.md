@@ -156,3 +156,7 @@ If you add material from refactoring.guru, follow its
 came from, quote only short passages (never a substantial part of an article), and use no more
 than 10 of its illustrations in total. For anything beyond that, ask the authors first at
 support@refactoring.guru.
+
+## License
+
+[MIT](LICENSE).

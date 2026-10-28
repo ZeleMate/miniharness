@@ -1929,3 +1929,15 @@ from `agent.messages` afterwards.
   exhaustion in code `semgrep scan` doesn't run. The app's audit has no exceptions. **Revisit:**
   drop each `--ignore-vuln` once a Semgrep bump lets the fixed version in; pip-audit won't say
   when an ignore goes stale.
+
+### D227. Three more ignored `mcp` advisories in the CI tools
+**Status:** accepted (made during implementation, under Auto-fix)
+- **Context:** CVE-2026-116684, CVE-2026-116685 and CVE-2026-116686 (all `mcp` 1.29.0, fixed in
+  1.30.0) turned the `deps` job red without a commit. Semgrep 1.181.0 pins `mcp==1.29.0`, and so does
+  1.182.1, its newest release, so no bump lets the fix in.
+- **What they are:** server bearer-token auth accepting another resource server's tokens; client
+  transports following cross-origin redirects with custom headers; the client fetching `$ref` URLs
+  while validating tool results. `semgrep scan` runs none of it: no MCP server, no MCP client.
+- **Chosen:** ignore all three next to D226's two, same reasoning, same exit. **Revisit:** drop them
+  with D226's `mcp` ignore once a Semgrep release allows `mcp>=1.30`. The app's own audit still has
+  no exceptions.
