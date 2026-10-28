@@ -4,8 +4,8 @@
 # action pinned to a full commit SHA, uv pinned by version and checksum, Python
 # tools installed from lockfiles with hashes (the CI tools from .github/tools,
 # locked apart from the app), and the Go tools fetched from their releases with
-# pinned SHA-256 digests (.github/actions/fetch-binary). The repo is private on
-# GitHub Free, so a red run can't block a merge: treat it as "don't merge yet".
+# pinned SHA-256 digests (.github/actions/fetch-binary). A red run blocks a merge
+# only if a branch ruleset makes these checks required.
 name: CI
 
 on:
