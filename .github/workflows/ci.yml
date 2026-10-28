@@ -95,15 +95,18 @@ jobs:
           uv export --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/app.txt"
           uv run --project .github/tools pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/app.txt"
       # The CI tools only. Semgrep pins mcp and opentelemetry-api exactly, so these
-      # two can't be upgraded until it does; both are resource exhaustion in code
-      # `semgrep scan` never runs (an MCP HTTP server, tracestate parsing). Remove
-      # each ignore once a Semgrep bump lets the fixed version in (DECISIONS.md D226).
+      # can't be upgraded until it does. All are in code `semgrep scan` never runs:
+      # MCP's HTTP server, server auth and client, and tracestate parsing. Remove
+      # each ignore once a Semgrep bump lets the fixed version in (DECISIONS.md D226, D227).
       - name: Known vulnerabilities in the CI tools
         run: |
           uv export --project .github/tools --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/tools.txt"
           uv run --project .github/tools pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/tools.txt" \
             --ignore-vuln CVE-2026-59951 \
-            --ignore-vuln CVE-2026-114603
+            --ignore-vuln CVE-2026-114603 \
+            --ignore-vuln CVE-2026-116684 \
+            --ignore-vuln CVE-2026-116685 \
+            --ignore-vuln CVE-2026-116686
 
   sast:
     runs-on: ubuntu-24.04

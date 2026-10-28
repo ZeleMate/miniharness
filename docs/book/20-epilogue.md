@@ -1,6 +1,6 @@
 # Epilogue: what it all adds up to
 
-Nineteen stages, 226 decisions, 342 tests. Looking back, the individual patterns matter less than the ideas
+Nineteen stages, 227 decisions, 342 tests. Looking back, the individual patterns matter less than the ideas
 that kept coming back. This chapter collects those ideas, the bugs that taught the most, the environment
 problems that cost real time, and the questions the project deliberately left open.
 
