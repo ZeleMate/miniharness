@@ -1,6 +1,6 @@
 # Epilogue: what it all adds up to
 
-Nineteen stages, 223 decisions, 341 tests. Looking back, the individual patterns matter less than the ideas
+Nineteen stages, 226 decisions, 342 tests. Looking back, the individual patterns matter less than the ideas
 that kept coming back. This chapter collects those ideas, the bugs that taught the most, the environment
 problems that cost real time, and the questions the project deliberately left open.
 
@@ -44,7 +44,7 @@ full class form only when it pays.
 
 **7. Small interfaces make everything swappable.** `Provider` needs one method; `ToolSet` needs two. That's
 why mocks, wrappers, proxies, views and team tools could stand in for the real thing everywhere, and why
-341 tests run offline in about a second.
+342 tests run offline in about a second.
 
 ## The bugs the tests missed
 
