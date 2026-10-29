@@ -29,10 +29,10 @@ load_dotenv()
 h = Harness("openrouter", budget=0.05, workspace="workspace", approve=True)
 print(h.run("Write a haiku about undo to haiku.txt"))
 print(h.report())  # calls, tokens, cost
-h.rewind()         # undo the file changes
+h.rewind()  # undo the file changes
 
 # Agent types and providers vary independently
-Harness("anthropic:claude-haiku-5-5", agent_type=PlannerAgent).run("What is (17 * 23) + 4?")
+Harness("anthropic", agent_type=PlannerAgent).run("What is (17 * 23) + 4?")
 ```
 
 ### Example flags
