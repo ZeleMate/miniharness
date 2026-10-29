@@ -106,7 +106,7 @@ epilogue with the cross-cutting lessons and open questions, and a cheat-sheet ap
 | `src/miniharness/tools/` | `Tool` classes, `ToolCommand`, and the `Toolbox` invoker with undo (stage 5: Command); `PolicyChain` permissions (stage 7: Chain of Responsibility); `ToolboxView` (stage 8: Proxy); `AgentTool` (stage 12: Composite); read-only calls of one turn run together with `Toolbox(max_workers=...)` (bonus: concurrent tools) |
 | `tests/test_singleton.py` | A textbook Singleton kept as a specimen, next to the DI that replaced it |
 | `DECISIONS.md` | Architecture decision log: options, trade-offs, open questions |
-| `PATTERNS.md` | Your learning journal |
+| `PATTERNS.md` | Pattern journal: per pattern, the problem, the alternatives, the cost, and where Python makes it simpler |
 
 ## Roadmap
 
