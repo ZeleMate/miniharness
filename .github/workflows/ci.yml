@@ -4,8 +4,9 @@
 # action pinned to a full commit SHA, uv pinned by version and checksum, Python
 # tools installed from lockfiles with hashes (the CI tools from .github/tools,
 # locked apart from the app), and the Go tools fetched from their releases with
-# pinned SHA-256 digests (.github/actions/fetch-binary). A red run blocks a merge
-# only if a branch ruleset makes these checks required.
+# pinned SHA-256 digests (.github/actions/fetch-binary). Every job is a required
+# check on main (.github/rulesets/main.json): renaming a job or changing the test
+# matrix means updating the ruleset too, or PRs wait forever on the old name.
 name: CI
 
 on:

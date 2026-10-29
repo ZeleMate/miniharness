@@ -1941,3 +1941,25 @@ from `agent.messages` afterwards.
 - **Chosen:** ignore all three next to D226's two, same reasoning, same exit. **Revisit:** drop them
   with D226's `mcp` ignore once a Semgrep release allows `mcp>=1.30`. The app's own audit still has
   no exceptions.
+
+### D228. Required checks on `main`, through a ruleset kept in the repo
+**Status:** accepted (your call on the bypass; the rest made during implementation)
+- **Context:** GitHub Free enforces rulesets only on public repos, so this one applies once the repo
+  is public. Until then a red run only meant "don't merge yet" (D224).
+- **Rules:** every CI job is a required check (`lint`, `typecheck`, the three `test (...)` matrix
+  legs, `deps`, `sast`, `secrets`, `workflows`); changes reach `main` only through a PR; no force
+  pushes, no deleting the branch.
+- **Bypass (your call): admins, on PRs only.** **Options:** admin bypass on PRs only · no bypass ·
+  admin bypass always. **Why:** `deps` and `sast` can turn red with no commit (D224, D227), and an
+  unrelated fix shouldn't wait for that. The bypass is a visible checkbox on a PR; a direct or
+  forced push to `main` is refused for everyone. **Cost:** the rule is only as strict as the admin.
+- **Small calls:** 0 required approvals (a solo maintainer can't approve their own PR); the branch
+  needn't be up to date before merging (less churn with Dependabot, at the cost of merging a PR
+  tested against an older `main`); each check is pinned to the GitHub Actions app
+  (`integration_id` 15368), so a status with the same name from another app can't satisfy it.
+  Semgrep Cloud's scan isn't required, since it runs outside this repo (D224).
+- **Kept as code:** `.github/rulesets/main.json` is the ruleset as the REST API takes it, applied
+  with `gh api -X POST repos/{owner}/{repo}/rulesets --input .github/rulesets/main.json` (or `PUT
+  .../rulesets/{id}` to update). GitHub doesn't read the file; it's the reviewable copy.
+- **Revisit:** renaming a job or changing the test matrix needs the same change in the ruleset, or
+  every PR waits on a check that never reports.
