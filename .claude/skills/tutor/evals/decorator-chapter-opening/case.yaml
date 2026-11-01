@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: decorator-chapter-opening
+expected_outcome: |
+  The first reply grounds itself in docs/book/06-decorator.md and src/miniharness/providers/wrappers.py, explains little, and ends with a single question to the learner instead of summarizing the chapter.

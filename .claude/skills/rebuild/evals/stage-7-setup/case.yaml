@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: stage-7-setup
+expected_outcome: |
+  Creates a learn/stage-7 worktree from 8340d1b (the parent of c15752d) outside the repo, runs uv sync and a green baseline pytest, states the policy/fallback problem from chapter 7 with file:line refs and an interface contract taken from the stage commit's tests, without revealing the implementation, and leaves main and the remote untouched.
