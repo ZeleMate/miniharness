@@ -9,10 +9,9 @@ equals: a writer and a reviewer going back and forth, or agents handing work to 
 directly to each other means every agent knows every other one, and changing who talks to whom means
 editing the agents.
 
-A Mediator moves the routing out of the participants. Objects stop talking to each other directly and
-talk only through one coordinator that owns the rules. The chapter opened with an honest caveat: nothing in
-the project *forced* this yet, the way the broken provider forced the circuit breaker. You chose to build it
-anyway, as a real multi-agent shape that trees can't express (D133).
+A Mediator moves the routing out of the participants. Objects stop talking to each other directly and talk
+only through one coordinator that owns the rules. Unlike the circuit breaker, nothing earlier in the build
+forces this pattern; it's here because it covers a real multi-agent shape that trees can't express (D133).
 
 ## The team
 
@@ -29,39 +28,37 @@ Members never reference each other. Each gets a `send_message(to, text)` tool li
 route allows, and designated members get a tool to finish. The team delivers each message, runs that
 member's turn, and collects whatever it sends next.
 
-You chose two more things: each member sees *only* the messages addressed to it (D134), which keeps
-contexts small and roles clean; and members keep their conversation between turns (D135), which needed a
-new `Agent.follow_up()` to continue a finished run with another message.
+Two more rules: each member sees *only* the messages addressed to it (D134), which keeps contexts small and
+roles clean; and members keep their conversation between turns (D135), through `Agent.follow_up()`, which
+continues a finished run with another message.
 
 Mechanically, the team adds its tools by *wrapping* each member's tools, on copies of the agents (D137).
-That's a Decorator over the `ToolSet` interface, and your original agents are never modified. The allowed
+That's a Decorator over the `ToolSet` interface, and the caller's agents are never modified. The allowed
 recipients appear in the tool's schema *and* are checked in code (D138): the schema steers the model, and
 the check enforces the rule.
 
-## Three live runs, three lessons
+## Three failure modes, three rules
 
-This chapter's design was shaped more by live runs than by planning.
+**A reviewer that approves too fast proves nothing.** If the first draft is approved immediately, the
+revision loop never runs. A demo task needs constraints a first draft is likely to miss (for example "a
+slogan of *exactly seven words* without the word 'bread'").
 
-**Run one** went too well. The reviewer approved the first draft immediately, so the revision loop never
-ran. It worked, but it proved nothing.
+**A reviewer can replace the work instead of judging it.** With a `finish(result)` tool and a prompt saying
+"call finish with the final text", a reviewer can "approve" by passing **its own rewrite**, which may break
+the rules and isn't the writer's work at all. The fix is in the API (D136): `finish(result)` becomes
+`approve()`, which takes no text. The team's result is always the last message the finisher received.
+**When a role matters, enforce it in the API, not in the prompt.**
 
-**Run two** asked for a bakery slogan of *exactly seven words* without the word "bread". The writer's
-draft had six words. The reviewer didn't send feedback. It called `finish` with **its own, much longer
-slogan**, which broke the rules too and wasn't the writer's work at all. The prompt had said "call finish
-with the final text", and the model simply rewrote it. You chose to change the API (D136): `finish(result)`
-became `approve()`, which takes no text. The team's result is always the last message the finisher
-received. **When a role matters, enforce it in the API, not in the prompt.**
+**Isolation can starve a member of context.** A reviewer that has never seen the task can't check "exactly
+seven words". Asking the writer to forward the requirements puts them *inside* the draft, which can then
+become the approved result. The real fix is to recognize whose job it is: sharing the brief is
+coordination, and coordination is the mediator's job. The team gives every member the original task with
+their first message (D142), while keeping messages private.
 
-**Run three** exposed a consequence of isolation. The reviewer couldn't check "exactly seven words",
-because it had never seen the task. An attempt to make the writer forward the requirements put them
-*inside* the approved result. The real fix was to recognize whose job it is: sharing the brief is
-coordination, and coordination is the mediator's job. The team now gives every member the original task
-with their first message (D142), while keeping messages private.
-
-The final run showed the full loop: draft, feedback ("8 words, please make it exactly 7"), revision,
-approval. One telling detail: the first draft *was* seven words; the reviewer miscounted. In another run, a
-reviewer approved a six-word slogan. **Models can't be trusted to count**, so rules that code can check
-belong in code (D143). Validators on `approve()` are the logged but unbuilt next step.
+A working loop then looks like: draft, feedback ("8 words, please make it exactly 7"), revision, approval.
+But the feedback itself may be wrong: **models can't be trusted to count**. A reviewer can miscount a
+correct draft or approve a wrong one. Rules that code can check belong in code (D143); validators on
+`approve()` are the open next step.
 
 ## The rest of the design
 
@@ -81,8 +78,8 @@ are mediators: the routing lives outside the agents.
 
 ## The one thing to remember
 
-**Every time a prompt failed to enforce a role, the fix was moving that rule into the mediator's API.** A
-model will eventually do whatever the interface allows; make the wrong thing impossible.
+**Each time a prompt fails to enforce a role, the fix is moving that rule into the mediator's API.** A model
+will eventually do whatever the interface allows; make the wrong thing impossible.
 
 ## Questions to think about
 

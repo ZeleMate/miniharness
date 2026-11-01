@@ -4,17 +4,17 @@
 
 ## Ten objects in the right order
 
-By stage 15, a capable agent meant hand-composing about ten objects, in the right order: a provider inside
+By stage 15, a capable agent means hand-composing about ten objects, in the right order: a provider inside
 five wrapper layers (in chapter 6's order), a Toolbox with a policy chain and an approver, one event bus
-passed to *both* the agent and the toolbox (forget one and tool events silently disappeared), observers, a
-prompt from the Builder, an autosave observer and sub-agents. `examples/hello.py` had grown to 165 lines,
-mostly wiring, and every new script copied it.
+passed to *both* the agent and the toolbox (forget one and tool events silently disappear), observers, a
+prompt from the Builder, an autosave observer and sub-agents. Every script that wants a capable agent copies
+that wiring.
 
 A Facade offers one simple entry point to a complicated subsystem.
 
 ## The Harness
 
-You chose a `Harness` class that owns its subsystems and exposes them (D173), configured with flat keyword
+`Harness` is a class that owns its subsystems and exposes them (D173), configured with flat keyword
 arguments that all have safe defaults (D174):
 
 ```python
@@ -24,26 +24,25 @@ print(h.report())
 ```
 
 After construction it offers a narrow API: `run()`, `follow_up()`, `stream()`, `resume()`, `add_helper()`,
-`rewind()` and `report()`. `examples/hello.py` shrank from 165 lines to 95, almost all of which is now
-argument parsing (D186).
+`rewind()` and `report()`. With it, almost all of `examples/hello.py` is argument parsing (D186).
 
 ## A facade simplifies; it doesn't lock anything away
 
-The most important design principle of this stage: everything the facade built stays a public attribute.
+The most important design principle of this stage: everything the facade builds stays a public attribute.
 `h.agent`, `h.toolbox`, `h.stack.tracker` and `h.events` are all reachable. A factory function that
-returned only an `Agent` would have buried the tracker, the cache and the fallback chain inside the
-wrapper stack (`agent.provider.inner.inner...`). With the Harness, the advanced case starts from a working
-setup instead of a blank file. GoF says the same: clients may always bypass a facade. The streaming example
-still wires an `Agent` by hand on purpose, so someone keeps showing the parts.
+returned only an `Agent` would bury the tracker, the cache and the fallback chain inside the wrapper stack
+(`agent.provider.inner.inner...`). With the Harness, the advanced case starts from a working setup instead
+of a blank file. GoF says the same: clients may always bypass a facade. The streaming example still wires an
+`Agent` by hand on purpose, so the parts stay visible somewhere.
 
 ## The recipe moves to one place
 
-Chapter 6 had kept the wrapper stack hand-built, so its order stayed visible, with a note: "add a helper
-once it's built in more than one place" (D54). The facade and the team example were those places, so the
-recipe became a public `build_stack()` function (D175). Like `default_prompt()` from chapter 4, it's a
-*Director*: a function that knows the order. It returns a `Stack` holding handles to the layers callers
-read afterwards (the tracker for cost, the cache for hits, the fallback chain for failures), so nobody
-walks `.inner` to find them.
+Chapter 6 keeps the wrapper stack hand-built, so its order stays visible, with a trigger: "add a helper once
+it's built in more than one place" (D54). The facade and the team example are those places, so the recipe
+becomes a public `build_stack()` function (D175). Like `default_prompt()` from chapter 4, it's a
+*Director*: a function that knows the order. It returns a `Stack` holding handles to the layers callers read
+afterwards (the tracker for cost, the cache for hits, the fallback chain for failures), so nobody walks
+`.inner` to find them.
 
 ## Defaults are the facade's real design work
 
@@ -51,42 +50,40 @@ The parts can do anything, so the facade's job is deciding what happens when the
 default here points the same way (D176):
 
 - **Side effects are denied unless `approve=` is given.** A library should never call `input()` on its own,
-  because that hangs headless runs in CI, on a server or in a subprocess. Live, with all defaults, the model
-  tried to write a file, was told it needed approval, and explained this to the user.
+  because that hangs headless runs in CI, on a server or in a subprocess. With all defaults, a `write_file`
+  call is told it needs approval, and the model can only report that.
 - **Every Harness has a $0.05 budget**, shared by all its runs, unless you pass `budget=None`.
 - **File tools exist only when a workspace is given.**
 
-The facade also wires one event bus through the agent, the toolbox and every helper (D177), which fixed
-chapter 10's lost-events problem for this path. A few other choices are worth noting: the console printer is
-on by default, which is unusual for a library but right for a learning harness (D180); the facade doesn't
-load `.env`, because loading environment files is the application's job (D181); and `add_helper()` only
-makes read-only sub-agents, since a writing helper raises questions (whose approval? whose undo history?)
-the facade shouldn't answer silently (D184).
+The facade also wires one event bus through the agent, the toolbox and every helper (D177), which fixes
+chapter 10's lost-events problem for this path. Other defaults: the console printer is on, which is unusual
+for a library but right for a learning harness (D180); the facade doesn't load `.env`, because loading
+environment files is the application's job (D181); and `add_helper()` only makes read-only sub-agents, since
+a writing helper raises questions (whose approval? whose undo history?) the facade shouldn't answer silently
+(D184).
 
 ## When defaults combine
 
-The parts had been tested separately; the facade combined them, and the combinations behaved in new ways.
+Parts tested separately can behave in new ways once a facade combines them.
 
-**Breaking out of a stream blocks the next call (D179).** Chapter 15 made an abandoned stream's cost
-unknown. Chapter 6 made the budget fail closed on unknown cost. Separately, both were right. But now every
+**Breaking out of a stream blocks the next call (D179).** Chapter 15 makes an abandoned stream's cost
+unknown. Chapter 6 makes the budget fail closed on unknown cost. Separately, both are right. But every
 Harness has a budget *by default*, so any `break` out of `h.stream()` followed by another call stops with
-`[stopped: budget]`. That was confirmed live, and it's still open.
+`[stopped: budget]`. It's tested, and it's open.
 
-**An old bug surfaced while moving code (D182).** The checkpoint autosave in the old example reacted to
-*every* agent's events. With a helper sub-agent and checkpoints, the helper finishing deleted the main run's
-checkpoint mid-run. Moving the code into the facade, where it had to be written carefully, exposed it. The
-facade's autosave now ignores sub-agent events, and `run()` never silently resumes an old run; `resume()`
-does that explicitly.
+**Autosave must ignore sub-agents (D182).** A checkpoint autosave that reacts to *every* agent's events
+breaks with helpers: a helper finishing deletes the main run's checkpoint mid-run. The facade's autosave
+ignores events from sub-agents, and `run()` never silently resumes an old run; `resume()` does that
+explicitly.
 
 **A `.env` gotcha.** `load_dotenv()` with no arguments searches from the calling *script's* folder, not the
-current directory. A script outside the repo found no key. It's a small thing, and it's exactly the kind of
-thing only a live run finds.
+current directory, so a script outside the repo finds no key. Pass the path explicitly.
 
 ## Facade vs its neighbours
 
 - **Facade vs Mediator:** both sit in front of a group of objects. A Mediator sits *between* peers that talk
   through it, and the peers know it. A Facade sits *in front of* a subsystem for an outside client, and the
-  subsystem doesn't know it exists. Nothing in the agent, toolbox or wrappers changed this stage.
+  subsystem doesn't know it exists. Nothing in the agent, toolbox or wrappers changes for the facade.
 - **Facade vs Builder (D185):** a Builder assembles one product under rules and is done. A Facade is still
   there afterwards, as the simple way to *use* many objects. Here they cooperate: the facade calls two
   Directors.

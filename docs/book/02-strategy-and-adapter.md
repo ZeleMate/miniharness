@@ -4,22 +4,20 @@
 
 ## The safety net first
 
-Before touching `call_llm`, we wrote tests that pinned down its exact behavior: for a conversation with a
-system prompt, a user message, an assistant turn with two tool calls and two tool results, *precisely*
-what JSON goes to OpenRouter and what goes to Anthropic, and precisely how each response is parsed back.
-The tests used fake SDK clients, small objects that record the request and return a canned response, so
-they ran offline and instantly.
+Before `call_llm` changes, tests pin down its exact behavior: for a conversation with a system prompt, a
+user message, an assistant turn with two tool calls and two tool results, *precisely* what JSON goes to
+OpenRouter and what goes to Anthropic, and precisely how each response is parsed back. The tests use fake
+SDK clients, small objects that record the request and return a canned response, so they run offline and
+instantly.
 
-These are called **characterization tests**: they describe what the code *does*, not what it *should* do.
-That distinction matters. Their job isn't to prove the code right; it's to guarantee that a refactor
-doesn't change behavior by accident. Through everything that followed, those payload assertions never
-changed (D1).
+These are **characterization tests**: they describe what the code *does*, not what it *should* do. The
+distinction matters. Their job isn't to prove the code right; it's to guarantee that a refactor doesn't
+change behavior by accident. Through every later refactor, those payload assertions stay unchanged (D1).
 
 ## Strategy: the "which model?" decision becomes an object
 
-The first design question was how to express "a thing that can turn a conversation into a reply." Three
-options were on the table: a `typing.Protocol`, an abstract base class, or a plain function. You chose the
-Protocol (D2):
+The first design question is how to express "a thing that can turn a conversation into a reply." The
+options are a `typing.Protocol`, an abstract base class, or a plain function. The code uses a Protocol (D2):
 
 ```python
 class Provider(Protocol):
@@ -31,11 +29,11 @@ class Provider(Protocol):
 ```
 
 A Protocol is *structural*: any class with a matching `complete()` method qualifies, whether or not it
-inherits from anything. That made every test double trivially valid, and later it let wrappers, proxies
-and mocks stand in for providers everywhere without ceremony. The cost is that a missing method only fails
-when it's called, not when the object is created, as it would with an abstract base class.
+inherits from anything. Every test double is trivially valid, and wrappers, proxies and mocks can stand in
+for providers everywhere without ceremony. The cost is that a missing method only fails when it's called,
+not when the object is created, as it would with an abstract base class.
 
-The Agent then received a provider from outside, instead of a string (D4):
+The Agent then receives a provider from outside, instead of a string (D4):
 
 ```python
 agent = Agent(provider=OpenRouterProvider(model="deepseek/deepseek-chat"))
@@ -50,7 +48,7 @@ returns to.
 
 ## Adapter: one conversation, two dialects
 
-The harder half was translation. OpenAI's chat format and Anthropic's Messages format describe the same
+The harder half is translation. OpenAI's chat format and Anthropic's Messages format describe the same
 things very differently:
 
 | | OpenAI / OpenRouter | Anthropic |
@@ -61,7 +59,7 @@ things very differently:
 
 Anthropic adds a subtle rule: all the results for one assistant turn must share a *single* user message.
 
-The design question was where translation should live. You chose separate adapter objects (D3):
+The design question is where translation lives. The code uses separate adapter objects (D3):
 `OpenAIChatAdapter` and `AnthropicMessagesAdapter`, each with a `to_wire()` and a `from_wire()`, pure
 functions with no network. A provider composes an adapter with an SDK client:
 
@@ -73,41 +71,38 @@ class OpenRouterProvider:
         return self.adapter.from_wire(response)
 ```
 
-This separates two different reasons for change. The *format* changes when an API's message shape
-changes; the *transport and configuration* change when you switch endpoints or keys. Kept apart, the
-OpenAI adapter can be reused for any OpenAI-compatible server (Ollama, vLLM) without subclassing anything.
+This separates two different reasons for change. The *format* changes when an API's message shape changes;
+the *transport and configuration* change when you switch endpoints or keys. Kept apart, the OpenAI adapter
+can be reused for any OpenAI-compatible server (Ollama, vLLM) without subclassing anything.
 
-## The decisions nobody asked about
+## Smaller decisions in the same refactor
 
-Several small choices were made while implementing, and listing them afterwards became the project's
-habit:
-
-- SDK clients became injectable, `Provider(model, client=None)`: tests pass a fake, and real use stays
-  one line. The default quietly depends on environment variables, which is a hidden dependency (D5).
+- SDK clients are injectable, `Provider(model, client=None)`: tests pass a fake, and real use stays one
+  line. The default quietly depends on environment variables, which is a hidden dependency (D5).
 - The adapter builds the *format*, and the provider adds `model` and `max_tokens`, because those are
   configuration, not format (D7).
-- `call_llm` was simply deleted rather than kept as a compatibility shim. Shims protect a library's
-  users, and this project had none (D9).
-- And the `raw` field stayed. It's where the abstraction leaks: if you switched providers in the middle of
-  a conversation, OpenRouter would silently ignore Anthropic's raw content (D8).
+- `call_llm` is deleted rather than kept as a compatibility shim. Shims protect a library's external
+  callers; with none, a shim is dead code (D9).
+- The `raw` field stays. It's where the abstraction leaks: switch providers in the middle of a
+  conversation and OpenRouter silently ignores Anthropic's raw content (D8).
 
 ## Every adapter leaks somewhere
 
 That last point deserves its own heading. An adapter promises a common interface over different systems,
-and eventually every adapter meets something the common interface can't express. Here it was Anthropic's
-thinking blocks, which must be replayed byte for byte. We could have hidden that, by dropping the blocks
-and losing the model's earlier reasoning, or broken the abstraction with a provider-specific field. We
-chose the honest leak and wrote it down. Knowing *where* your abstraction leaks is better than pretending
+and eventually every adapter meets something the common interface can't express. Here it's Anthropic's
+thinking blocks, which must be replayed byte for byte. There are two dishonest options: drop the blocks
+and lose the model's earlier reasoning, or hide the problem. The code takes the honest leak, a
+provider-specific field, and documents it. Knowing *where* your abstraction leaks is better than pretending
 it doesn't.
 
 ## The one thing to remember
 
-**Lock down behavior before you change structure.** Characterization tests turned a scary refactor into
-a safe one: the structure changed completely, and the tests proved the bytes on the wire didn't.
+**Lock down behavior before you change structure.** Characterization tests turn a risky refactor into a
+safe one: the structure changes completely, and the tests prove the bytes on the wire don't.
 
 ## Questions to think about
 
-- The Protocol let a mock be a provider without inheriting anything. What did we give up compared with an
+- The Protocol lets a mock be a provider without inheriting anything. What do you give up compared with an
   abstract base class?
 - Where does your own code translate between two formats inline? What would pulling that into an adapter
   make testable?

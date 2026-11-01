@@ -2,11 +2,11 @@
 
 *Pattern: [Command](https://refactoring.guru/design-patterns/command). Code: `src/miniharness/tools/base.py`, `tools/toolbox.py`, `tools/files.py`.*
 
-## What a tool call was
+## What a tool call is before this stage
 
-Until this stage, a tool call was a dictionary lookup followed by a function call. The result came back,
-and that was the end of it. Nothing recorded what had happened, nothing could be replayed, and nothing
-could be undone. The three tools also lived in a module-level `TOOLS` dict, another global.
+Before this stage, a tool call is a dictionary lookup followed by a function call. The result comes back,
+and that's the end of it. Nothing records what happened, nothing can be replayed, and nothing can be
+undone. The three tools also live in a module-level `TOOLS` dict, another global.
 
 The Command pattern starts from a simple observation: **you can't hold on to a function call, but you can
 hold on to an object.** Turn each call into an object that carries its tool, its arguments, its result and
@@ -23,10 +23,10 @@ GoF names four roles, and each one has a concrete home here:
 
 ## What undo should mean
 
-The most interesting question was what "undo" means when most tools have no side effects. `add` changes
-nothing; `current_time` changes nothing; but a file write does. Three answers were possible: every command
-implements undo (as a no-op for read-only tools), only log and replay, or let tools *declare* their nature.
-You chose declaration (D30):
+The interesting question is what "undo" means when most tools have no side effects. `add` changes nothing;
+`current_time` changes nothing; but a file write does. There are three answers: every command implements
+undo (as a no-op for read-only tools), only log and replay, or let tools *declare* their nature. The code
+uses declaration (D30):
 
 ```python
 class Tool:
@@ -45,10 +45,10 @@ changes something permanently.
 
 ## A tool worth undoing
 
-To make undo real, the stage added `read_file` and `write_file`, confined to a workspace directory (D31).
+To make undo real, this stage adds `read_file` and `write_file`, confined to a workspace directory (D31).
 The confinement detail matters: the path is *resolved* first, following `..` and symlinks, and only then
-checked to be inside the workspace. Checking the raw string for `..` would miss a symlink pointing
-outside. Tests cover `../escape.txt`, absolute paths and a malicious symlink.
+checked to be inside the workspace. Checking the raw string for `..` would miss a symlink pointing outside.
+Tests cover `../escape.txt`, absolute paths and a malicious symlink.
 
 ## Five decisions worth studying
 
@@ -71,19 +71,19 @@ from, and since it changed nothing, there's nothing to undo.
 **Least privilege (D37).** `Agent(provider)` with no arguments gets only read-only tools. File access must
 be granted deliberately, with an explicit workspace.
 
-## The live run
+## Order matters within a turn
 
-Asked to write a haiku to a file and read it back, the model sent `write_file` and `read_file` **in the
-same turn**. It worked only because the Toolbox ran them in order. Running them concurrently would have
-raced. That observation became an open decision (D39) that comes back in several later chapters: the
-harness assumes tools run one at a time, and more of the design quietly depends on it than you'd expect.
+Asked to write a file and read it back, a model can send `write_file` and `read_file` **in the same turn**.
+That's only correct because the Toolbox runs them in order; running them concurrently would race. The
+harness therefore assumes tools run one at a time (D39), and more of the later design depends on that
+assumption than you'd expect. Chapter 19 revisits it.
 
-The `--rewind` flag then undid the write, and the workspace was empty again.
+With `--rewind`, the example undoes the write afterwards and leaves the workspace as it was.
 
 ## The one thing to remember
 
-**Turning a call into an object is what makes it possible to log, replay and undo it.** Claude Code's
-rewind and checkpoints are this pattern applied to file edits.
+**Turning a call into an object is what makes it possible to log, replay and undo it.** The rewind and
+checkpoint features of coding agents are this pattern applied to file edits.
 
 ## Questions to think about
 

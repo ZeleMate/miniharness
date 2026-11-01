@@ -134,7 +134,7 @@ class Team:
 
     def _approve(self, member: str) -> str:
         # The result is always a teammate's message, never text the finisher writes
-        # itself: a live run showed a reviewer "approving" its own rewrite.
+        # itself, so a reviewer can't "approve" its own rewrite (D136).
         received = self._last_received.get(member)
         if received is None:
             return "Error: there is nothing to approve yet"

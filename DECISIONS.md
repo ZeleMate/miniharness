@@ -1,12 +1,15 @@
-# Architecture decision log
+# Design rationale
 
-Every non-obvious design choice, with the options and trade-offs, so the
-reasoning survives longer than the conversation that produced it.
-**Status:** `accepted` (chosen and built), `open` (revisit later),
-`superseded by Dn` (replaced), `notes` (observations that decide nothing).
+Every non-obvious design choice in `miniharness`, with the options that were
+available, the one the code uses, and what it costs. The book cites these
+entries by number (**D63**); read one when you want the full trade-off.
+**Status:** `accepted` (what the code does), `open` (a known gap or a choice
+worth revisiting), `superseded by Dn` (replaced by a later design), `notes`
+(cross-cutting observations that decide nothing).
 
-`PATTERNS.md` is your personal learning journal; this file records *what the
-codebase decided and why*.
+Entries are grouped by the stage that introduced them, in build order.
+[`PATTERNS.md`](PATTERNS.md) is the learner's workbook; this file records
+*why the code is shaped the way it is*.
 
 ---
 
@@ -23,14 +26,14 @@ codebase decided and why*.
   (c) is more faithful but heavier, so it's worth it later if fakes start to drift.
 - **Lesson:** to refactor safely, first lock down the current behavior, warts included.
 
-### D2. The provider interface is a `typing.Protocol` (your call)
+### D2. The provider interface is a `typing.Protocol`
 **Status:** accepted
 - **Options:** `Protocol` (structural) · `abc.ABC` (nominal) · plain callable.
 - **Why:** test doubles and third-party classes qualify without inheriting from
   anything. **Cost:** a missing method only fails when it's called (or under a type
   checker), not at instantiation the way an ABC does.
 
-### D3. Translation lives in separate adapter objects (your call)
+### D3. Translation lives in separate adapter objects
 **Status:** accepted
 - **Options:** separate `to_wire`/`from_wire` adapters composed into providers ·
   private methods inside each provider.
@@ -38,7 +41,7 @@ codebase decided and why*.
   *transport/config* (provider). `OpenAIChatAdapter` can be reused for Ollama/vLLM
   with no subclassing. **Cost:** more files and one more hop when reading the code.
 
-### D4. Agent receives a provider instance (your call)
+### D4. Agent receives a provider instance
 **Status:** accepted
 - **Options:** inject an instance · keep `provider="openrouter"` with a lookup table.
 - **Why:** `Agent` depends only on the `Provider` protocol. **Cost:** callers must
@@ -46,12 +49,12 @@ codebase decided and why*.
   that's the smell stage 3 (Factory) fixes.
 
 ### D5. SDK clients are injectable: `Provider(model, client=None)`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Options:** (a) the provider always builds its own client; (b) `client` param
   with a real default; (c) client required, built by the caller or a factory.
 - **Chosen:** (b). Tests pass a fake, and real use stays one line.
 - **Trade-off:** the default hides a dependency on env vars (`OPENROUTER_API_KEY`).
-  (c) is purer dependency injection, and stage 3's factory may move us there.
+  (c) is purer dependency injection, and stage 3's factory may move the code there.
 
 ### D6. SDKs are imported lazily inside the provider constructors
 **Status:** superseded by D70 (stage 8)
@@ -63,7 +66,7 @@ codebase decided and why*.
   (`uv add --optional anthropic ...`). If they don't, move the imports to the top.
 
 ### D7. Adapters build a *partial* request; providers add `model` and `max_tokens`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** the model choice and the token budget are configuration, not format.
   Keeping them out of the adapter keeps it a pure function of (messages, tools).
 - **Trade-off:** you need both classes to see the full request. Anthropic
@@ -80,21 +83,21 @@ codebase decided and why*.
 - **Trade-off:** (a) is simple but leaky. If you switch providers mid-conversation,
   OpenRouter silently ignores `raw` while Anthropic would replay it. (c) is the
   cleanest but is a big redesign.
-- **Revisit when:** stage 11 (Memento/checkpoints) forces us to decide what a
+- **Revisit when:** stage 11 (Memento/checkpoints) forces a decision on what a
   serializable conversation actually contains.
 
 ### D9. Delete `call_llm` outright instead of keeping a compatibility shim
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** there are no external callers. A shim (`call_llm` delegating to providers)
   matters for a published library, where deprecation protects users. Here it
   would just be dead code.
 
 ### D10. Test fakes are duck-typed `SimpleNamespace` objects, not real SDK types
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** short, readable and independent of SDK internals. It works because the
   adapters only read attributes (structural typing again, as in D2).
 - **Risk:** fakes can drift from the real response shapes after an SDK upgrade.
-  Mitigation: the live smoke test (`examples/hello.py` on both providers).
+  Mitigation: a live smoke test (`examples/hello.py` against each real provider).
 
 ### D11. `TOOLS` stays a global that `Agent` passes to providers
 **Status:** superseded by D32 (stage 5)
@@ -105,7 +108,7 @@ codebase decided and why*.
 
 ## Stage 3: Factory
 
-### D12. Providers self-register with a decorator (your call)
+### D12. Providers self-register with a decorator
 **Status:** accepted
 - **Options:** `@register_provider("name")` on each class · one explicit dict in
   one file · a `from_config()` Factory Method per class (still needs a lookup on top).
@@ -115,7 +118,7 @@ codebase decided and why*.
 - **Cost:** "magic at a distance". A provider only exists once its module is imported
   (see D16). An explicit dict is greppable and has no import side effects.
 
-### D13. Providers are chosen with a `"provider:model"` spec string (your call)
+### D13. Providers are chosen with a `"provider:model"` spec string
 **Status:** accepted
 - **Options:** spec string · separate `name` + kwargs · TOML config profiles.
 - **Why:** one value that works on the CLI, in env vars and in tests. It's also the
@@ -123,7 +126,7 @@ codebase decided and why*.
 - **Revisit when:** "Strategy part 2" (per-task model routing) needs named profiles.
   Config files can then *produce* spec strings, so the two don't conflict.
 
-### D14. No Abstract Factory yet (your call)
+### D14. No Abstract Factory yet
 **Status:** open (re-examined in stage 6, see D43)
 - **Why:** an Abstract Factory builds *families* of objects that must match. Today a
   provider's only companion is its one fixed adapter, so a factory for families
@@ -131,17 +134,17 @@ codebase decided and why*.
 - **Trigger:** a second per-provider component that must pair correctly, e.g. stage
   6's pricing/token counting (OpenRouter returns cost; Anthropic needs a price table).
 
-### D5 revisited: keep `client=None` (your call)
+### D5 revisited: keep `client=None`
 **Status:** accepted. `create_provider` stays a thin name-to-constructor mapping and
 passes `client=` through as a kwarg, so tests still inject fakes.
 
 ### D15. Spec parsing splits on the *first* colon; no model means the provider's default
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** OpenRouter model ids can contain colons (`deepseek/deepseek-chat:free`).
   `str.partition(":")` handles that, and a test pins it.
 
 ### D16. Registration happens through `providers/__init__.py` importing every module
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Risk:** add a provider module but forget the import, and the provider silently
   doesn't exist. `test_all_builtin_providers_are_registered` guards the built-ins.
 - **Alternatives:** package entry points (`[project.entry-points]`, the plugin route
@@ -159,7 +162,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   this together with the `TOOLS` global (D11).
 
 ### D18. Registering a duplicate name raises instead of overwriting
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** fail loudly. A silent overwrite from a typo'd name or a double import
   would be very hard to debug.
 - **Cost:** you can't deliberately replace a built-in provider (e.g. a patched
@@ -167,13 +170,13 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   a different registry instead.
 
 ### D19. `create_provider` passes `**kwargs` through untyped
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** each provider has different constructor options (`max_tokens`, `client`, ...).
 - **Cost:** no validation at the factory. A misspelled kwarg only fails as a
   `TypeError` from the constructor, and type checkers can't help.
 
 ### D20. `MockProvider(responses=None, model="mock")`: uniform construction
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** so `create_provider("mock")` works like any other provider.
 - **Wart:** a mock built by the factory has no scripted responses, so
   `hello.py -m mock` fails on the first call. Mocks are meant for tests, which pass
@@ -183,14 +186,14 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 
 ## Stage 4: Builder
 
-### D21. The Builder assembles the system prompt, not the Agent (your call)
+### D21. The Builder assembles the system prompt, not the Agent
 **Status:** accepted
 - **Options:** sectioned system-prompt builder · fluent `Agent.builder()` · skip the stage.
 - **Why:** a Builder earns its place when construction has *rules*. Here the rule is
   real: stable sections first and volatile ones last, because prompt caching only reuses
   an unchanged prefix. A fluent Agent builder would duplicate what kwargs already do.
 
-### D22. Mutable builder whose methods return `self` (your call)
+### D22. Mutable builder whose methods return `self`
 **Status:** accepted
 - **Options:** mutable `return self` · immutable copies (frozen dataclass + `replace`).
 - **Cost:** a partially built builder can't be shared. Branching off it mutates the
@@ -198,20 +201,20 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   avoids the trap by returning a fresh builder each time.
 
 ### D23. Render order is fixed by the builder, not by the call order
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** callers can't accidentally put the date above the instructions. This is
   the Builder's real job: it owns the *assembly rules*, so callers only provide the parts.
 - **Alternative:** render in call order and document "put volatile things last".
   That's a rule every caller has to remember.
 
 ### D24. `tool_rules()` takes guidance text, not the `TOOLS` dict
-**Status:** accepted (made during implementation; differs from the preview)
+**Status:** accepted
 - **Why:** providers already send tool schemas through the API's `tools` field.
   Repeating names and descriptions in the prompt costs tokens on every call and can
   drift out of sync with the real schemas.
 
 ### D25. `build()` returns a plain string
-**Status:** open (made during implementation)
+**Status:** open
 - **Alternative:** return structured blocks (stable part, volatile part) so the
   Anthropic adapter can put a `cache_control` breakpoint between them. That's the
   "same steps, different representations" side of Builder.
@@ -219,20 +222,20 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   the string is enough.
 
 ### D26. The Director is a function, `default_prompt()`, that returns a fresh builder
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** in GoF, a Director class holds a construction recipe. In Python, a function
   that returns a pre-filled builder is the same idea with less ceremony. Returning
   the *builder* (not the string) lets callers extend the recipe before `build()`.
 
 ### D27. Per-section semantics: identity replaces, rules append, environment merges
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `identity` is required, and `build()` raises without it. An agent with no identity
   is almost certainly a mistake. Empty sections are omitted entirely.
 - Rendering uses markdown `## Heading` sections. XML tags (`<environment>`) would work
   equally well with Claude, and the choice lives in one place, so it's cheap to change.
 
 ### D28. Environment facts: coarse values and sorted keys
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - The example passes the *date*, not a timestamp. That breaks the cached suffix once a
   day instead of on every request. Keys are sorted, so the same facts always render the
   same bytes, regardless of keyword order.
@@ -244,7 +247,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 
 ## Stage 5: Command
 
-### D29. One class per tool, sharing a `Tool` base class (your call; base class mine)
+### D29. One class per tool, sharing a `Tool` base class
 **Status:** accepted
 - **Options:** class per tool · `@tool` decorator that derives schemas from type hints.
 - **Why:** classes give undo logic and per-tool state (a workspace root) a natural home.
@@ -253,7 +256,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   Inheritance carries defaults; a Protocol can't. The rule of thumb: Protocol for pure
   interfaces, a base class when there's shared behavior.
 
-### D30. Tools declare `side_effects` and `reversible` (your call)
+### D30. Tools declare `side_effects` and `reversible`
 **Status:** accepted
 - **Options:** declared reversibility · undo on everything (a no-op for read-only) ·
   no undo, only a log.
@@ -261,18 +264,18 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   The two flags separate "changes nothing", "changes something reversibly" and
   "changes something permanently".
 
-### D31. `read_file`/`write_file` confined to a workspace (your call)
+### D31. `read_file`/`write_file` confined to a workspace
 **Status:** accepted
 - `resolve_in_workspace` resolves `..` and symlinks *before* checking containment,
   so `../x`, absolute paths and symlinks pointing outside are all rejected (each is
   tested). Checking the raw string for `..` would miss symlinks.
 
-### D32. The Agent receives an injected `Toolbox` (your call)
+### D32. The Agent receives an injected `Toolbox`
 **Status:** accepted. This replaces the `TOOLS` global (D11). The Toolbox is the
 *Invoker*: it looks tools up, runs each call as a `ToolCommand`, and keeps the history.
 
 ### D33. Undo by *snapshot*, not by *inverse operation*
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Options:** (a) the tool records the prior state at run time (`_WriteUndo.previous`)
   and undo restores it; (b) the tool defines a compensating command (the inverse of
   "create file" is "delete file") without recording state.
@@ -282,42 +285,42 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 - **Note:** the snapshot is a small *Memento*, which previews stage 11.
 
 ### D34. `undo_last` stops at an irreversible side effect instead of skipping it
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** if a file was written and then emailed, undoing the write leaves the
   world inconsistent with what was sent. Stopping is the safe default, and a caller
   can still decide to skip deliberately.
 
-### D35. Undo refuses if the file changed after our write
-**Status:** accepted (made during implementation)
-- This is *optimistic concurrency*: we remember what we wrote and only restore if
+### D35. Undo refuses if the file changed after the tool wrote it
+**Status:** accepted
+- This is *optimistic concurrency*: the tool remembers what it wrote and only restore if
   the file still contains it. Otherwise undo would silently destroy someone else's edit.
 
 ### D36. Failed calls become error text for the model and stay out of the history
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** the model can recover from an error message. A failed call changed
   nothing, so there's nothing to undo. (`write_text` isn't atomic, so a crash halfway
   through a write is an accepted gap.)
 
 ### D37. The default toolbox is read-only; file tools need an explicit workspace
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - This is the *principle of least privilege*: `Agent(provider)` with no arguments can't
   touch the disk. You have to grant filesystem access deliberately with
   `default_tools(workspace)`.
 
 ### D38. `read_file` truncates at 20,000 characters
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** one large file shouldn't flood the context window. The truncation note
   tells the model the file is longer. A smarter version would support line ranges.
 
 ### D39. Parallel tool calls run sequentially, in the order the model sent them
 **Status:** superseded by D215 (concurrent read-only calls, bonus stage)
 - The model sent `write_file` and `read_file` *in the same turn*. That worked only
-  because we execute them in order. Running them concurrently would race.
+  because they execute in order. Running them concurrently would race.
 - **Revisit when:** tools become async or slow. Options include running only
   read-only calls concurrently, or always respecting the order.
 
 ### D40. History is in memory, unbounded, and shared across runs of the same Toolbox
-**Status:** open (made during implementation)
+**Status:** open
 - `Agent.run()` doesn't reset `toolbox.history`, so a reused toolbox accumulates
   commands across tasks. That's handy for "undo the last task", but nothing marks
   where one run ends and the next begins.
@@ -327,10 +330,10 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 
 ## Stage 6: Decorator
 
-### D41. Four wrappers: usage tracking, budget guard, retry, dev cache (your call)
+### D41. Four wrappers: usage tracking, budget guard, retry, dev cache
 **Status:** accepted
 
-### D42. Decorators are wrapper classes that are Providers themselves (your call)
+### D42. Decorators are wrapper classes that are Providers themselves
 **Status:** accepted
 - **Options:** wrapper classes · a middleware list inside the Agent.
 - **Why:** each wrapper is a `Provider`, so the Agent and the factory don't change.
@@ -338,27 +341,27 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 - **Naming trap:** Python's `@decorator` syntax wraps *functions at definition time*.
   GoF Decorator wraps *objects at runtime*. These are different tools that share a name.
 
-### D43. Each provider reports its own cost; still no Abstract Factory (your call)
+### D43. Each provider reports its own cost; still no Abstract Factory
 **Status:** accepted
-- OpenRouter returns `usage.cost` (USD) in every response, which we checked live before
-  writing the code. The Anthropic API returns tokens only, so `AnthropicProvider.price()`
+- OpenRouter returns `usage.cost` (USD) in every response; check a real response before
+  writing code against a field name. The Anthropic API returns tokens only, so `AnthropicProvider.price()`
   multiplies by a small table.
 - **D14 re-examined:** pricing is the second per-provider component, which was the
   stated trigger. But each provider still has exactly one adapter and one pricing rule,
   both fixed by its own constructor. There's no *family* to keep consistent, so an
   Abstract Factory would add a layer without preventing any mismatch. D14 stays open.
 
-### D44. When the budget runs out, the Agent stops gracefully (your call)
+### D44. When the budget runs out, the Agent stops gracefully
 **Status:** accepted. `run()` returns `"[stopped: budget] Spent $x of $y"`.
 
 ### D45. The Agent catches a `StopRun` base class, not `BudgetExceeded`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** the Agent shouldn't know which wrappers exist. Any wrapper (budget, a future
   rate limit, a kill switch) can end the run cleanly by raising a `StopRun` subclass.
   The dependency points from wrappers to the Agent's contract, not the other way round.
 
 ### D46. Recommended stack: `DiskCache(Retry(BudgetGuard(UsageTracker(base))))`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Order *is* behavior, and tests pin both cache placements:
   - cache outside the tracker: hits are free and don't count against the budget
   - cache inside the tracker: replayed responses count as spend again
@@ -367,7 +370,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 - **Lesson:** decorators are composable, but they aren't *commutative*.
 
 ### D47. `BudgetGuard` wraps a `UsageTracker` specifically, not any Provider
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** the guard needs spend data, and the tracker owns it.
 - **Alternatives:** the guard keeps its own running total (duplicate bookkeeping),
   or guard and tracker merge into one class (two responsibilities in one object).
@@ -375,25 +378,25 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   makes explicit.
 
 ### D48. The budget fails closed when any cost is unknown
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** a budget you can't measure, you can't enforce. Treating unknown as $0 would
   let an unpriced model spend without limit.
 - **Consequence:** an Anthropic model missing from the price table (D52) stops after
   its first call when a budget is set. That's loud on purpose.
 
 ### D49. `MalformedResponseError` carries usage, and the tracker records failed attempts
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** a malformed reply was still generated and billed. Without this, retries
   would be invisible spend.
 
 ### D50. `Retry` handles semantic failures only, with no backoff
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Both SDKs already retry 429s, 5xx errors and timeouts (2 retries by default). Adding
   network retries on top would multiply them: 3 of ours × 3 of theirs is up to 9 calls.
 - Bad tool-call JSON isn't a rate problem, so an immediate retry is fine and no sleep is needed.
 
 ### D51. Cache key: namespace + model + tools + neutral messages; `raw` excluded; pickle storage
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **What's in the key:** anything that could change the answer. **What's left out:**
   `raw`, which is provider-specific and derived from the rest. If it were included, the
   same conversation could hash differently.
@@ -402,18 +405,18 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   non-deterministic tool call.
 - `pickle` can store Anthropic's SDK objects, but loading a pickle can run code, so it's
   only safe for a cache directory you control. Errors aren't cached.
-- **Not the same as prompt caching:** this cache skips the API entirely, on our side.
-  Provider-side prompt caching (D25, still open) makes repeated prefixes cheaper, but
+- **Not the same as prompt caching:** this cache skips the API entirely, client-side.
+  Provider-side prompt caching (D25, open) makes repeated prefixes cheaper, but
   the call still happens.
 
 ### D52. Anthropic prices are a hardcoded, simplified table
-**Status:** open (made during implementation)
+**Status:** open
 - It ignores prompt-cache pricing and Haiku's higher rate above 100K input tokens.
   Hardcoded prices go stale. The real fix would be a pricing source with a date,
   or the provider's own usage reporting.
 
 ### D53. A provider that reports no usage counts as unknown cost
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `UsageTracker` records `Usage()` (cost `None`) when a response has no usage. With a
   budget, that fails closed (D48). Mock responses in tests must therefore include usage
   when a budget is involved.
@@ -428,13 +431,13 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 
 ## Stage 7: Chain of Responsibility
 
-### D55. Two chains: tool-call policy and model fallback (your call)
+### D55. Two chains: tool-call policy and model fallback
 **Status:** accepted
 - **CoR vs Decorator (stage 6):** a decorator *always* passes the call on and adds
   behavior along the way. In a chain, each link may *handle* the request and stop it.
   The question a chain answers is "who deals with this?", not "what else happens?".
 
-### D56. A policy chain is a list where the first verdict wins (your call)
+### D56. A policy chain is a list where the first verdict wins
 **Status:** accepted
 - **Options:** a list of `check() -> Decision | None` · GoF linked handlers with `next`.
 - **Why:** policies don't know about each other, reordering means editing a list, and
@@ -442,70 +445,70 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   same intent with a different structure.
 
 ### D57. `ASK` is a verdict, resolved by the chain's injected approver
-**Status:** accepted (made during implementation; refines your approval choice)
+**Status:** accepted
 - **Why:** it separates *deciding to ask* (a policy) from *how to ask* (terminal, Slack,
   web UI). The policies stay pure, and the approver is swappable and easy to test.
 - With no approver, `ASK` becomes `DENY`, so unattended runs fail closed.
 
-### D58. When no policy decides, deny (your call)
+### D58. When no policy decides, deny
 **Status:** accepted. This is consistent with D37 (read-only default toolbox) and D48
 (fail-closed budget).
 - **Behavior change:** `Toolbox(default_tools(workspace))` with no policy can no
   longer write files. It now needs an approver or an explicit policy. The execution
   tests use `PolicyChain.allow_all()`, so their intent is visible.
 
-### D59. Approver is an injected callback; a denial is returned to the model as text (your call)
+### D59. Approver is an injected callback; a denial is returned to the model as text
 **Status:** accepted
-- Observed live: after a declined `write_file`, the model explained that it lacked
-  permission and asked the user how to proceed. The run degraded gracefully.
+- **Effect:** after a declined `write_file`, a model can explain that it lacks
+  permission and ask how to proceed. The run degrades gracefully instead of crashing.
 
 ### D60. Policy is checked in `Toolbox.execute`, before the command is created
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** the invoker is the single gate every call passes through. Denied calls
   never become commands, so they're kept apart in `toolbox.denied` and aren't in
   the undo history.
 
 ### D61. Every `Decision` names its reason and the policy that made it
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** "why was this allowed?" is the first question when a permission system
   surprises you. The example prints `denied write_file: ... (by AskBeforeSideEffects)`.
 
 ### D62. `MaxCalls` is a quota, not a rate limit
-**Status:** accepted (made during implementation; renamed from the preview's `RateLimit`)
+**Status:** accepted
 - It counts calls over the chain's lifetime, with no time window. Naming it honestly
   avoids implying behavior it doesn't have.
 - A call is counted when it passes `MaxCalls`, even if a later policy denies it.
 
 ### D63. Fallback only on *transient* errors, never on configuration errors
-**Status:** accepted (found in a live run)
-- **What happened:** the first version fell back on any SDK `APIError`. A live run
-  with an invalid Anthropic key got `401 invalid x-api-key`, and the chain quietly
-  answered with DeepSeek. That hid a broken key and spent money on another model.
-- **Now:** fall back on connection errors, timeouts, rate limits, 5xx errors and
+**Status:** accepted
+- **Failure mode:** falling back on any SDK `APIError` means an invalid API key
+  (`401 invalid x-api-key`) is quietly answered by the backup model. That hides a
+  broken key and spends money on another model.
+- **Rule:** fall back on connection errors, timeouts, rate limits, 5xx errors and
   malformed replies. Auth, permission, bad-request and not-found errors propagate.
 - **Lesson:** decide which failures mean "try someone else" and which mean "you
   have a bug". A fallback that catches everything is a bug-hider.
 
 ### D64. Fallback on refusal; the last link's refusal is returned, not raised
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - A refusal is an answer, not an error, so if no one else can help, the caller sees it
   as a normal `stop_reason="refusal"`.
 
 ### D65. No circuit breaker: every call tries the failing provider first again
 **Status:** superseded by D79 (stage 9)
-- In the fallback run, each of the agent's two model calls hit the broken provider
-  before falling back, which costs latency and money on every turn.
+- Without one, each of the agent's model calls hits the broken provider before
+  falling back, which costs latency and money on every turn.
 - **Revisit when:** stage 9 (State). A circuit breaker (closed → open → half-open) is a
   textbook State machine: after N failures, skip the provider for a cooldown period.
 
 ### D66. Usage of a refusal swallowed by the fallback is invisible to an outer tracker
-**Status:** accepted: fixed by D213 (review before publishing; was open)
+**Status:** accepted: fixed by D213
 - With `UsageTracker(FallbackChain([...]))`, the tracker only sees the response that
   was returned. A refused response was still billed, but nobody counts it.
 - **Fix options:** a tracker inside each link, or the chain reporting swallowed usage.
 
 ### D67. After a fallback, one conversation mixes providers
-**Status:** open (made during implementation)
+**Status:** open
 - Turn 1 may come from Anthropic (with `raw`) and turn 2 from OpenRouter (without it).
   Both adapters tolerate this today, but it's the D8 leak in action: the conversation
   type doesn't record which provider produced which turn.
@@ -514,7 +517,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 
 ## Stage 8: Proxy
 
-### D68. Three proxies: virtual (lazy provider), protection (toolbox view), and BudgetGuard reclassified (your call)
+### D68. Three proxies: virtual (lazy provider), protection (toolbox view), and BudgetGuard reclassified
 **Status:** accepted
 - **Proxy vs Decorator:** same structure (a wrapper with the same interface), different
   intent. A decorator *adds behavior*. A proxy *controls access to the real object*:
@@ -523,7 +526,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   servers and sandboxed execution, but it's the most code of the three, and nothing in the
   project needs process isolation yet.
 
-### D69. A lazy provider fails at first use, with `materialize()` to fail fast on purpose (your call)
+### D69. A lazy provider fails at first use, with `materialize()` to fail fast on purpose
 **Status:** accepted
 - The example builds the main provider eagerly with `create_provider`, the same as
   materializing at startup, and keeps only the fallback lazy. A broken *main* config fails
@@ -536,13 +539,13 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   needed) now lives in one explicit object instead of being scattered across constructors.
 
 ### D71. `LazyProvider.model` answers without building when the spec names a model
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `lazy_provider("openrouter:qwen/...")` knows its model from the spec. With no model
   in the spec, the default lives in the provider's constructor (env var), so asking for
   `.model` has to build it. Proxies often face this: some questions can be answered by the
   stand-in, and others need the real thing.
 
-### D72. `BudgetGuard` is a protection proxy, not a decorator (your call; docs only)
+### D72. `BudgetGuard` is a protection proxy, not a decorator
 **Status:** accepted
 - It never changes a response; it only decides whether the call happens. The D46
   stack therefore mixes both kinds: `UsageTracker`, `Retry` and `DiskCache` add behavior,
@@ -550,7 +553,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   says what it really is. A classification by intent doesn't need to move code.
 
 ### D73. Code that unwraps wrappers must also see through proxies
-**Status:** open (made during implementation)
+**Status:** open
 - `DiskCache` derives its namespace from the innermost provider. Wrapping a `LazyProvider`
   meant unwrapping it, which builds it. The namespace is now resolved on first use, and
   `_innermost` materializes lazy proxies.
@@ -559,13 +562,13 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   a small `inner_provider()` method on every wrapper and proxy.
 
 ### D74. Hidden tools look exactly like missing tools
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Calling a tool the view hides returns `Error: unknown tool 'write_file'`, the same as
   a tool that doesn't exist. A "permission denied" message would confirm the tool exists.
   This is information hiding, a common security stance.
 
 ### D75. A view shares the real Toolbox's policy and history; undo stays on the Toolbox
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - The view only narrows *what can be called*. Allowed calls still pass the policy chain,
   which gives defense in depth: the view hides tools *before* the model can try them, and
   the chain decides *after* it tries.
@@ -573,19 +576,19 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   last change, which might not be one the view made.
 
 ### D76. The Agent depends on a `ToolSet` protocol (`specs()` + `execute()`), not on `Toolbox`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - This is the *interface segregation principle*: the Agent uses two methods, so it asks
   for exactly those two. That's what lets a `ToolboxView`, or a future remote tool set,
   stand in for a Toolbox.
 
 ### D77. Views take an allow list, checked at construction
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - An allow list is least privilege: new tools added to the Toolbox stay hidden from
   existing views. A typo in the list (`"writefile"`) raises immediately instead of
   silently hiding a tool.
 
 ### D78. `LazyProvider` is not thread-safe
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Two threads calling it at the same moment could both build the real provider.
   Nothing in the harness is concurrent today. A lock fixes it if that changes (D39).
 
@@ -593,15 +596,15 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 
 ## Stage 9: State
 
-### D79. Two state machines: a circuit breaker and the agent lifecycle (your call)
+### D79. Two state machines: a circuit breaker and the agent lifecycle
 **Status:** accepted
-- **Breaker:** fixes D65. Observed live, an unreachable primary was tried once, the
-  breaker opened, and the next two turns skipped it instantly with no network call.
+- **Breaker:** fixes D65. An unreachable primary is tried until the threshold, the
+  breaker opens, and later turns skip it instantly with no network call.
 - **Lifecycle:** partly speculative, since `run()` worked fine as a loop. It earns its keep
   in stage 10 (each transition is a natural event to observe) and stage 11 (state boundaries
   are safe points to checkpoint and resume).
 
-### D80. One class per state, GoF style (your call)
+### D80. One class per state, GoF style
 **Status:** accepted
 - **Options:** state classes · an Enum plus a transition table.
 - **Why:** each state's behavior lives in one place, and no method branches on "which
@@ -609,18 +612,18 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 - **Cost:** more classes. For a two-state toggle, an Enum is simpler. The pattern pays off
   when states *behave* differently, as the breaker's three do.
 
-### D81. An open breaker raises `CircuitOpenError`, which counts as transient (your call)
+### D81. An open breaker raises `CircuitOpenError`, which counts as transient
 **Status:** accepted
 - `FallbackChain`'s default errors include it, so an open breaker means "skip me".
 
 ### D82. Only transient errors trip the breaker
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - A bad key or an unknown model passes straight through without counting, which is
   consistent with D63. Waiting won't fix a configuration bug, so opening the circuit
   would only delay the real error.
 
 ### D83. The failure count is state-local data owned by `Closed`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** entering `Closed` creates a fresh object, so the count resets automatically.
   No "remember to reset the counter" code exists anywhere. State objects can carry the
   data that only matters in that state, like `Open.opened_at` and `ActingOnTools.calls`.
@@ -628,43 +631,43 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   are more robust under steady traffic, but an agent makes few calls.
 
 ### D84. The breaker takes an injected clock, defaulting to `time.monotonic`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Tests drive time with a fake clock instead of sleeping. A monotonic clock is immune to
   wall-clock changes (NTP, daylight saving), so cooldowns can't jump.
 
 ### D85. The circuit breaker is a protection proxy whose behavior is a state machine
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Patterns compose: by *intent* it's a proxy (it controls whether the provider is reached),
   and by *implementation* it's State. It subclasses the wrapper base, so unwrapping (D73)
   and `.model` work.
 
 ### D86. `Open` → `HalfOpen` happens lazily, on the next call after the cooldown
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - There's no timer thread. The cost is that `breaker.state` still reads "open" after the
   cooldown until something calls it. A passive transition is simpler, and nobody
   watches the state between calls.
 
 ### D87. `HalfOpen` lets one trial through; not thread-safe
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - With concurrent callers, all of them could pass in half-open. It's fine while the harness
   is sequential (D39, D78).
 
 ### D88. A refusal counts as success for the breaker
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - A provider that refuses is healthy, just unwilling. Whether to try another provider is the
   fallback's decision (D64), not the breaker's.
 
 ### D89. Lifecycle states call the Agent's Template Method hooks
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `Thinking.step()` calls `agent.think()` and `agent.finish()`, so subclasses that override a
   hook keep working (tested with `Shouty`). State decides *when* a step happens; Template
   Method decides *how* it's done.
 
 ### D90. Exceeding `max_steps` still raises `RuntimeError`
-**Status:** open (made during implementation)
+**Status:** open
 - A `Stopped("max_steps")` state would be more consistent with budget stops, but it changes
   what callers see (a returned string instead of an exception). The refactor kept behavior
-  identical, and all 106 earlier tests passed unchanged.
+  identical, so the existing tests pass unchanged.
 
 ### D91. No `AwaitingHuman` state: approval stays synchronous inside the Toolbox
 **Status:** open, now unblocked: stage 11 can persist a paused run (D118)
@@ -675,38 +678,38 @@ passes `client=` through as a kwarg, so tests still inject fakes.
   missing piece for asynchronous approval.
 
 ### D92. `start()` works from `Idle` or a finished state; it refuses while running
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Restarting resets messages and the model-call count. The Toolbox history is *not* reset (D40).
 
 ---
 
 ## Stage 10: Observer
 
-### D93. Typed, frozen event dataclasses delivered through an `EventBus` (your call)
+### D93. Typed, frozen event dataclasses delivered through an `EventBus`
 **Status:** accepted
 - **Options:** typed events plus a bus · an observer base class with `on_*` hook methods.
 - **Why:** adding an event type never changes an interface, so existing observers keep
   working. Subscribers pick events with `match`.
 - **Cost:** less discoverable than hook methods. You read `events.py` to see what exists.
 
-### D94. One shared bus, injected into the Agent and the Toolbox (your call)
+### D94. One shared bus, injected into the Agent and the Toolbox
 **Status:** accepted
 - Only the Toolbox knows a call's policy decision, so it emits `ToolCalled(decision=...)`.
   The Agent emits run, state and model events. With one bus, one subscriber sees the
   whole story in order.
 
-### D95. A failing observer is isolated, recorded and warned about (your call)
+### D95. A failing observer is isolated, recorded and warned about
 **Status:** accepted
 - A broken observer can't change the run's outcome (tested with a handler that
   divides by zero). This keeps the defining property of Observer: subjects don't depend
   on their observers.
 
-### D96. Two observers: `ConsolePrinter` and `JsonlTracer` (your call)
+### D96. Two observers: `ConsolePrinter` and `JsonlTracer`
 **Status:** accepted. The example now shows progress live instead of reconstructing it
 from `agent.messages` afterwards.
 
 ### D97. Events are emitted from framework code, not from overridable hooks
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `StateChanged` comes from `Agent._transition` and `ModelCalled` from `Thinking.step`,
   not from `think()`. A subclass that overrides `think()` still produces events (tested).
   If the emit lived inside the hook, every override would have to remember `super()`.
@@ -720,38 +723,38 @@ from `agent.messages` afterwards.
   Agent reaching into a component it otherwise treats as a black box (D76).
 
 ### D99. Delivery is synchronous, in the emitting thread
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Simple, ordered and deterministic in tests. The cost is that a slow observer slows the
   agent. `JsonlTracer` opens the file once per event. A queue with a background writer
   would decouple them, but adds threads and shutdown handling.
 
 ### D100. Events carry live objects; frozen is shallow
-**Status:** open (made during implementation)
+**Status:** open
 - `ToolCalled.call` is the same `ToolCall` the agent uses. An observer that mutates
   `call.arguments` would change the agent's data. Freezing only stops *reassigning* fields.
   Copying on emit would be safer but costs a copy per event.
 
 ### D101. No event for unexpected errors
-**Status:** open (made during implementation)
+**Status:** open
 - If a provider raises something that isn't `StopRun` (e.g. the `max_steps` `RuntimeError`,
   D90), the run aborts and observers never see `RunFinished`. A `RunFailed(error)` event
   emitted from `run()` would close the gap.
 
 ### D102. The events ↔ tools import cycle is broken with a `TYPE_CHECKING` import
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `events.py` only needs `Decision` as an annotation. With
   `from __future__ import annotations`, it never imports the tools package at runtime,
   so the Toolbox can import events at the top of its module.
 
 ### D103. `--steps` removed; a stage 7 bug fixed in the example
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - The console printer shows every state, so `--steps` was redundant.
 - **Bug found while editing:** the fallback report looped with `for provider, why in ...`,
   overwriting the `provider` variable that the cache summary read next. With
   `--fallback --cache` and a failure, it would have crashed. The loop now uses `link`.
 
 ### D104. Observers can watch but can't veto
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `UsageTracker` could almost be an observer of `ModelCalled`. But `BudgetGuard` must stop a
   call *before* it happens, and an observer only hears about events after the fact. This is
   why the budget is a proxy (D72), not an observer. Observer is for *reacting*, not *controlling*.
@@ -760,45 +763,45 @@ from `agent.messages` afterwards.
 
 ## Stage 11: Memento + Prototype
 
-### D105. Checkpoints support conversation rewind, file rewind, save/resume and fork (your call)
+### D105. Checkpoints support conversation rewind, file rewind, save/resume and fork
 **Status:** accepted
-- Observed live: a run stopped by a tiny budget was resumed from its autosaved checkpoint
-  in a new process. It continued with the next tool call and didn't repeat the first model call.
+- A run stopped by a budget can resume from its autosaved checkpoint in a new process.
+  It continues with the next tool call and doesn't repeat model calls already made.
 
-### D106. Checkpoints are JSON; `raw` is stored via `model_dump()` (your call)
-**Status:** accepted; **live replay against Anthropic not yet verified**
+### D106. Checkpoints are JSON; `raw` is stored via `model_dump()`
+**Status:** accepted; live replay against Anthropic unverified
 - Anthropic's SDK blocks are dumped with `model_dump(mode="json", exclude_none=True)`, and the
   adapter replays the loaded dicts unchanged (tested offline with real `TextBlock` and
   `ToolUseBlock` objects).
 - `exclude_none` avoids sending `null` for optional fields the API may not expect.
-- **Unverified:** the Anthropic key was invalid during this stage, so a resumed Claude run
-  (with thinking blocks) hasn't been sent back to the real API yet. Verify once the key works.
+- **Unverified:** a resumed Claude run with thinking blocks is tested offline only, not
+  against the real API.
 
-### D107. A fork copies the conversation and shares everything else unless overridden (your call)
+### D107. A fork copies the conversation and shares everything else unless overridden
 **Status:** accepted
 - It warns when the fork shares the original's Toolbox (same workspace, same undo history).
 
 ### D108. The memento is a transparent frozen dataclass, not an opaque object
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - GoF's Memento is *opaque*: only the originator can read it. Here, serialization needs
   the fields, and Python can't enforce privacy anyway. The intent survives as a convention:
   only `Agent` builds and restores checkpoints, and everyone else just holds them.
 
 ### D109. Deep copies on capture *and* on restore
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Capture copies, so later changes to the agent don't alter the checkpoint. Restore copies,
   so changes after restoring don't alter it either, and the same checkpoint can be restored
   many times (both tested). The cost is two copies of the conversation per round trip.
 
 ### D110. Lifecycle states serialize themselves
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Each state's `snapshot()` returns only its own data (`ActingOnTools` → its pending calls,
   `Done` → the answer). `from_snapshot()` rebuilds it, so a run can resume with tool calls
   still pending. `from_snapshot` is a small `if` chain; a registry like stage 3's would be the
   next step if states multiply.
 
 ### D111. A `ToolMark` names its Toolbox; a foreign mark restores the conversation only
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Each Toolbox has a random `id`. A checkpoint from another Toolbox (a fork, or a file
   loaded in a new process) can't safely rewind files: its history positions refer to commands
   this Toolbox never ran. `restore()` warns and restores just the conversation.
@@ -806,7 +809,7 @@ from `agent.messages` afterwards.
   Persisting the command history (D40) would be needed to rewind files across processes.
 
 ### D112. File rewind checks for irreversible actions before undoing anything
-**Status:** accepted, with a known gap (made during implementation)
+**Status:** accepted, with a known gap
 - `Toolbox.rewind_to()` scans the range first, and `Agent.restore()` rewinds files *before*
   touching the conversation. An irreversible action leaves everything exactly as it was (tested).
 - **Gap:** an individual undo can still fail halfway, for example when a file changed since it
@@ -814,17 +817,17 @@ from `agent.messages` afterwards.
   a transaction or a redo log.
 
 ### D113. Rewound commands stay in the history, marked undone
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - The history is an audit log: "written, then rewound" is more truthful than silently deleting
   the record. Later marks still work because positions only grow.
 
 ### D114. Atomic saves and a format version
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `save()` writes to a temporary file and renames it, so a crash mid-write never leaves half a
   checkpoint. A `version` field lets future formats be detected instead of misread.
 
 ### D115. `fork()` uses `copy.copy(self)`, so a fork of a subclass is that subclass
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - This is Prototype's real advantage over calling a constructor: the copy keeps the original's
   concrete class and configuration without the caller knowing either (tested with `Shouty`).
 - Overrides are limited to known attributes, so `fork(model=...)` raises instead of silently
@@ -834,14 +837,14 @@ from `agent.messages` afterwards.
 - A fork never rewinds the original's files (`restore(files=False)`).
 
 ### D116. Autosave is an observer in the example, not an Agent feature
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - It subscribes to `StateChanged` and saves after every non-final transition, and it deletes the
   file when the run finishes. The Agent didn't change, which shows patterns composing (Observer
   driving Memento).
 - A resumed run emits no `RunStarted`, because it didn't start.
 
 ### D117. Checkpoints are taken between steps; resuming re-runs pending tool calls
-**Status:** open (made during implementation)
+**Status:** open
 - A checkpoint in `ActingOnTools` holds calls that haven't run yet. If a process crashes *while*
   tools are running (after a write, before the next save), resuming runs that write again.
   That's *at-least-once* execution. Exactly-once would need per-call records written before
@@ -857,31 +860,31 @@ from `agent.messages` afterwards.
 
 ## Stage 12: Composite
 
-### D119. A sub-agent is an `AgentTool`, a regular `Tool` (your call)
+### D119. A sub-agent is an `AgentTool`, a regular `Tool`
 **Status:** accepted
 - **Why:** the Toolbox, policies, events and history all work unchanged, because the parent
   can't tell a sub-agent from `add`. That uniformity *is* the Composite pattern: leaves (tools)
   and composites (agents with tools) share one interface, so trees build naturally.
-- Observed live: the parent's context grew only by the researcher's final answer.
+- The parent's context grows only by the sub-agent's final answer.
 
-### D120. Each call runs a fresh copy of a prototype agent (your call)
+### D120. Each call runs a fresh copy of a prototype agent
 **Status:** accepted
 - `copy.copy(prototype)` (stage 11's Prototype) gives the same class and configuration with an
   empty conversation. The prototype itself never runs. Calls can't influence each other, and
   context stays small, which is the main reason harnesses use sub-agents.
 
-### D121. `AgentTool.side_effects` is derived from its sub-agent's tools, recursively (your call)
+### D121. `AgentTool.side_effects` is derived from its sub-agent's tools, recursively
 **Status:** accepted
 - This is the classic Composite *operation*: a property of the whole computed from its parts.
-  A read-only researcher is read-only, so `AllowReadOnly` lets it run without asking (seen live).
+  A read-only researcher is read-only, so `AllowReadOnly` lets it run without asking.
   A sub-agent that can write needs approval, and that propagates up any depth of tree (tested).
 
-### D122. Sub-agents share the parent's bus; events carry `agent` and `depth` (your call)
+### D122. Sub-agents share the parent's bus; events carry `agent` and `depth`
 **Status:** accepted
 - The console printer indents nested runs, and the JSONL trace records the tree.
 
 ### D123. Agent attribution uses a `ContextVar`, not parameters
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Problem:** a sub-agent's tool calls go through a Toolbox (often a view of the parent's)
   that doesn't know who's calling. Passing "agent, depth" explicitly would change
   `execute()`, `ToolSet` and every wrapper.
@@ -893,23 +896,23 @@ from `agent.messages` afterwards.
   asyncio-safe, unlike a global.
 
 ### D124. Events have `agent`/`depth` fields with defaults, filled in by the bus
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Emitters didn't change, because the bus applies `dataclasses.replace()`. Events emitted outside
   any agent (e.g. a Toolbox used directly) keep `agent=""` and `depth=0`.
 - Tests that compared whole events now compare the fields they care about.
 
 ### D125. `Tool` attributes are plain annotations, not `ClassVar`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `AgentTool` sets `name`/`description` per instance and *computes* `side_effects` as a property.
   `ClassVar` told type checkers that wasn't allowed. Simple tools still set them as class attributes.
 
 ### D126. When side effects can't be determined, assume there are some
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - A cycle (an agent that contains itself) or tools that can't be inspected count as side effects.
   This fails closed, consistent with D37, D48 and D58. A wrong "read-only" would skip approval.
 
 ### D127. An `AgentTool` call isn't undoable as a unit
-**Status:** open (made during implementation)
+**Status:** open
 - A sub-agent's writes are recorded in whichever Toolbox it used. Through a view of the parent's
   Toolbox they're in the parent's history and can be undone one by one. With its own Toolbox,
   they're in that Toolbox's history.
@@ -917,20 +920,20 @@ from `agent.messages` afterwards.
   (stage 11's `rewind_to`), so "undo the delegation" becomes one step.
 
 ### D128. A depth limit (default 3) stops runaway recursion
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - An agent that can call itself would otherwise recurse until the provider budget or Python's stack
   ran out. Past the limit, `run()` raises `RecursionError`, and the Toolbox turns it into error text
   for the model (tested).
 
 ### D129. Sub-agent copies share the prototype's provider (and everything shallow)
-**Status:** accepted (made during implementation)
-- Observed live: one `UsageTracker` counted all 4 model calls, the sub-agent's included, so one
-  budget covers the whole tree. A breaker or cache inside the provider is shared too.
+**Status:** accepted
+- One `UsageTracker` counts every model call, the sub-agent's included, so one budget covers
+  the whole tree. A breaker or cache inside the provider is shared too.
 - `copy.copy` is shallow: the provider, the tools and the bus are shared, while `messages` and `state`
   are replaced on `start()`. A sub-agent with its own Toolbox needs its own prototype configured that way.
 
 ### D130. `Toolbox.add()` is public
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Needed so a sub-agent can get a view of the Toolbox that will contain it (create the Toolbox,
   build the view, then add the `AgentTool`). The constructor uses it, so duplicate checks live in one place.
 
@@ -941,7 +944,7 @@ from `agent.messages` afterwards.
   It works out, but a `StopRun` inside a sub-agent arguably should stop the whole tree immediately.
 
 ### D132. Nested events arrive in post-order
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - The sub-agent's `ToolCalled` events arrive *before* the parent's `ToolCalled` for the `AgentTool`
   itself, because the outer call only finishes when the inner run does. Rebuilding the tree from a
   trace needs `depth` plus order. Stage 14's Visitor will walk that tree.
@@ -950,34 +953,34 @@ from `agent.messages` afterwards.
 
 ## Stage 13: Mediator
 
-### D133. A peer team that talks only through a `Team` mediator (your call)
+### D133. A peer team that talks only through a `Team` mediator
 **Status:** accepted
 - **Mediator vs Composite (stage 12):** in a tree, a parent *owns* its children and calls them.
   In a team, nobody owns anybody: members only get `send_message`, and the routing graph lives in
   one place. Changing who may talk to whom means editing `routes`, not the agents.
-- Partly speculative when chosen (nothing in the project forced it), but it covers a real
-  multi-agent shape trees can't: equals talking back and forth (review loops, handoffs).
+- Nothing earlier in the build forces it, but it covers a real multi-agent shape trees
+  can't: equals talking back and forth (review loops, handoffs).
 
-### D134. Each member sees only messages addressed to it (your call)
+### D134. Each member sees only messages addressed to it
 **Status:** accepted
 - Contexts stay small and roles stay clean. Only the mediator (`team.log`) sees everything.
-- **Cost found live:** the reviewer didn't know the original task. See D142.
+- **Cost:** a reviewer doesn't see the original task. See D142.
 
-### D135. Members keep their conversation between turns: `Agent.follow_up()` (your call)
+### D135. Members keep their conversation between turns: `Agent.follow_up()`
 **Status:** accepted
 - `follow_up(text)` continues a finished run with a new user message, so the writer revises with
   its earlier draft and the feedback in context. `max_steps` applies per turn, and each turn emits
   `RunStarted`.
 
-### D136. Finishing is `approve()`: the result is the last message the finisher received (your call; found live)
+### D136. Finishing is `approve()`: the result is the last message the finisher received
 **Status:** accepted
-- **What happened:** with `finish(result)`, a live reviewer "approved" by passing its *own* rewritten
-  slogan, which ignored the task's constraints and wasn't the writer's work.
-- **Now:** `approve()` takes no text. The team's output is always a teammate's message.
+- **Failure mode:** with `finish(result)`, a reviewer can "approve" by passing its *own* rewrite,
+  which may ignore the task's constraints and isn't the writer's work.
+- **Rule:** `approve()` takes no text. The team's output is always a teammate's message.
 - **Lesson:** when a role matters, enforce it in the mediator's API, not in the prompt.
 
 ### D137. Team tools are added by wrapping each member's `ToolSet`, on copies of the agents
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `_MemberTools` adds `send_message`/`approve` and delegates everything else to the member's own
   tools. It's a Decorator over `ToolSet`. The team holds `copy.copy`s of the agents, so the caller's
   agents are never modified (tested).
@@ -985,44 +988,44 @@ from `agent.messages` afterwards.
   nothing outside it.
 
 ### D138. Allowed recipients are both a schema `enum` and a server-side check
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - The `enum` steers the model toward valid recipients. `_send()` still rejects anything else.
   The schema is a hint and the check is the enforcement, the same defense-in-depth idea as D75.
 
 ### D139. A member's turn ends when its own run finishes
-**Status:** open (made during implementation)
+**Status:** open
 - After `send_message`, the model gets "Message sent" and replies once more before its run ends.
-  That's an extra short model call per turn (8 calls for 4 messages in the live run).
+  That's an extra short model call per turn (about two calls per message sent).
 - **Alternative:** end the turn as soon as the member sends (a `StopRun`-like signal from the tool),
   which would halve the calls, at the cost of members never sending two messages in one turn.
 
 ### D140. Messages are delivered first in, first out; several sends in one turn are all delivered
-**Status:** accepted (made during implementation)
+**Status:** accepted
 
 ### D141. A team ends on approval, `max_turns`, a dead end, or a stopped member
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Dead end:** a member that finishes without sending or approving ends the team with
   `"[stopped: no messages] <its answer>"`.
 - **Stopped member** (e.g. the shared budget): the whole team stops at once, unlike stage 12's
   trees (D131), where the parent carries on.
 
-### D142. The mediator shares the team's brief on each member's first turn (found live)
+### D142. The mediator shares the team's brief on each member's first turn
 **Status:** accepted
-- **What happened:** with strict isolation (D134), the reviewer couldn't check "exactly 7 words"
-  because it never saw the task. Telling the writer to forward it put the requirements *inside* the
-  draft, and that text then became the approved result.
-- **Now:** a member's first message is prefixed with `Team task: ...`. Sharing the brief is coordination,
+- **Failure mode:** with strict isolation (D134), a reviewer can't check "exactly 7 words"
+  because it never sees the task. Asking the writer to forward it puts the requirements *inside* the
+  draft, and that text can become the approved result.
+- **Rule:** a member's first message is prefixed with `Team task: ...`. Sharing the brief is coordination,
   which is the mediator's job, while messages stay private.
 
 ### D143. Mechanical requirements belong in code, not in a reviewer's judgment
-**Status:** open (found live)
-- Live, one reviewer approved a 6-word slogan for a 7-word rule. Another flagged a correct 7-word draft as
-  8 words. An LLM is unreliable at counting.
+**Status:** open
+- LLMs are unreliable at counting: a reviewer can approve a 6-word draft for a 7-word rule, or flag a
+  correct 7-word draft as 8 words.
 - **Option:** validators on `approve()`, e.g. `Team(..., validators=[exact_words(7)])`, that reject an
   approval with a concrete reason. Code checks what can be checked, and the LLM judges the rest.
 
 ### D144. `MessageRouted` is emitted by the mediator, outside any member's scope
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - So it's tagged `agent=""`, or with the enclosing agent if a team runs inside one (e.g. a team behind an
   `AgentTool`). The console shows `── writer → reviewer: ...`.
 
@@ -1030,30 +1033,28 @@ from `agent.messages` afterwards.
 
 ## Stage 14: Visitor
 
-### D145. Classic `accept`/`visit` double dispatch (your call)
+### D145. Classic `accept`/`visit` double dispatch
 **Status:** accepted
 - **Options:** `node.accept(visitor)` → `visitor.visit_<type>(node)` · `match` statements in plain functions.
 - **Why:** it shows the pattern itself. The trade-off is the *expression problem*: a new operation is one
-  new class (demonstrated twice: a visitor written inside a test, and a throwaway one written live to
-  debug a run), while a new node type touches the base visitor and every visitor that cares.
+  new class (for example a throwaway visitor written inside a test or to debug one trace), while a new node type touches the base visitor and every visitor that cares.
 
-### D146. Two visitors: `CostSummary` and `HtmlReport` (your call)
+### D146. Two visitors: `CostSummary` and `HtmlReport`
 **Status:** accepted
-- Live: the summary's totals matched the run's own usage line exactly ($0.000760 over 4 calls), split
-  between `agent` and `researcher`.
-- **Observed value:** a live answer claimed 4 action items when the file had 2. Walking the trace
-  showed `read_file` returned 2, the researcher reported 2, and the *parent* invented the other two.
-  Without the tree you can't tell which layer went wrong.
+- The summary's totals equal the run's own usage line, split per agent.
+- **Why a tree matters:** when a final answer is wrong (say it claims 4 items where a file has 2),
+  walking the trace shows which layer introduced the error: the tool output, the sub-agent's report,
+  or the parent's synthesis. A flat log can't attribute it.
 
 ### D147. The tree is rebuilt from event *records* (the JSONL format), not from event objects
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** one input format for files and, later, live streams. A live builder would just turn events
   into the same records the tracer writes.
 - **Consequence:** the tracer's record keys are now a contract. Renaming an event field breaks old traces.
   A format version (like checkpoints, D114) would be the next step if traces need to last.
 
 ### D148. A nested run attaches to the *next* `ToolCalled` of the run that's open around it
-**Status:** accepted, with a known dependency (made during implementation)
+**Status:** accepted, with a known dependency
 - Events arrive in post-order (D132), so the builder holds deeper runs as pending until their parent's
   tool call finishes.
 - **Relies on sequential tools (D39):** with tools running concurrently, two sub-runs and two tool
@@ -1061,42 +1062,42 @@ from `agent.messages` afterwards.
   the tool call that started it.
 
 ### D149. `StateChanged` is left out of the tree
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Runs, model calls and tool calls already tell the story; state changes would double the nodes.
 
 ### D150. Team turns are top-level runs, with messages between them
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Each `follow_up` turn is its own `RunNode`. A member's turns aren't grouped under the member, so the
   tree shows the conversation in the order it happened.
 
 ### D151. The base visitor walks children by default; overrides must call `super()` to keep walking
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Visitors override only what they need. The risk is that an override that forgets `super()` silently
   skips that subtree, for example missing a sub-agent's costs. `CostSummary.visit_tool` calls it explicitly.
 
 ### D152. Visitors accumulate state; results are read after `accept()`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `CostSummary().by_agent`, `HtmlReport().page()`. Returning values from every `visit_*` would make
   combining results awkward. The cost is one visitor instance per traversal.
 
 ### D153. Visitors compose: the HTML report runs a cost summary per run
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Each run's header shows its cost *including sub-agents*. Re-walking each subtree is quadratic for deep
   trees, which is fine at trace sizes. A single pass computing costs bottom-up would scale better.
 
 ### D154. The HTML report escapes all trace text
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Tool outputs and model text are untrusted: a file containing `<script>` must not run when you open the
   report (tested). The page is self-contained, with light and dark styles.
 
 ### D155. Command line: `python -m miniharness.trace FILE [--html OUT]`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 
 ---
 
 ## Stage 15: Iterator
 
-### D156. A provider's `stream()` yields `TextDelta`s and ends with one `Completed(response)` (your call)
+### D156. A provider's `stream()` yields `TextDelta`s and ends with one `Completed(response)`
 **Status:** accepted
 - **Options:** typed chunks ending in `Completed` · a generator that yields strings and *returns* the
   `LLMResponse` · an `on_token` callback on `complete()`.
@@ -1107,7 +1108,7 @@ from `agent.messages` afterwards.
   want the response.
 
 ### D157. `stream()` is optional; `stream_from()` replays `complete()` for providers without one
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - The `Provider` protocol still only requires `complete()`, so every existing provider, test fake and
   user-written provider keeps working. `stream_from(provider, ...)` uses `stream()` if it exists,
   otherwise `as_stream(complete())`.
@@ -1115,7 +1116,7 @@ from `agent.messages` afterwards.
   everywhere: `BudgetGuard` checks and `LazyProvider` builds on first `next()`, not on `stream()`.
 - **Revisit when** a type checker should enforce it: a separate `StreamingProvider` protocol.
 
-### D158. Wrappers: a safe default `stream()` via their own `complete()`, plus opt-in overrides (your call)
+### D158. Wrappers: a safe default `stream()` via their own `complete()`, plus opt-in overrides
 **Status:** accepted
 - **Options:** safe default + overrides · forward to `inner.stream()` by default · stream from base
   providers only.
@@ -1128,7 +1129,7 @@ from `agent.messages` afterwards.
 - **Cost:** each wrapper now has two code paths to keep in step.
 
 ### D159. Retry and FallbackChain only switch before the first text token
-**Status:** open (made during implementation)
+**Status:** open
 - The consumer can't un-see tokens. Retrying after "half" was shown would print "halfok" (tested).
 - **Consequences:** a `MalformedResponseError` (bad tool JSON) is detected at the end of the stream, so it
   is only retried if the model streamed no text first. A refusal that already streamed text is kept,
@@ -1137,29 +1138,29 @@ from `agent.messages` afterwards.
   "retracted" chunk that tells consumers to discard what they printed.
 
 ### D160. A stream that produced output but never completed counts as unknown cost
-**Status:** open (made during implementation)
+**Status:** open
 - `UsageTracker` records an empty `Usage()` (cost `None`) when a stream breaks or is abandoned after its
   first chunk. Those tokens were generated and billed, but the usage chunk never arrived. With unknown
   spend, `BudgetGuard` fails closed (D48).
-- **Live:** `examples/stream.py --max-words 12` stopped mid-story, and the run's total became "unknown".
-  That's honest, but one Ctrl-C now blocks further calls under a budget.
+- **Example:** `examples/stream.py --max-words 12` stops mid-answer, and the run's total becomes
+  "unknown". That's honest, but one Ctrl-C blocks further calls under a budget.
 - **Revisit when** that's annoying: look up the real cost afterwards (OpenRouter's generation endpoint
   takes the response id), or estimate it from the streamed text.
 
 ### D161. `CircuitBreaker` states expose `admit` / `succeeded` / `failed` instead of `call(fn)`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `call(fn)` wrapped a function returning a response, which can't cover a stream whose outcome is only
   known after the last chunk. With three hooks, `complete()` and `stream()` share one state machine.
   The existing breaker tests passed unchanged.
 - A stream the consumer abandons counts as neither success nor failure (tested).
 
 ### D162. A replayed response streams its whole text as one `TextDelta`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `as_stream()` (used by cache hits, the safe wrapper default and non-streaming providers) yields the
   text at once, then `Completed`. Consumers that only print tokens still show the answer.
-  Live: a cache hit printed the full sentence at 0.0s.
+  A cache hit therefore prints the full answer at once.
 
-### D163. Generator steps: `iter_step()` yields mid-step and returns the next state (your call)
+### D163. Generator steps: `iter_step()` yields mid-step and returns the next state
 **Status:** accepted
 - **Options:** generator steps · a worker thread feeding a queue · yielding only between steps.
 - **Shape:** `AgentState.iter_step()` defaults to `return self.step(agent)` (plus an unreachable
@@ -1169,16 +1170,16 @@ from `agent.messages` afterwards.
   cancellation protocol.
 - **Cost:** the pull view can only interrupt where a generator yields. A sub-agent runs inside the
   parent's tool call, which doesn't yield, so in `iter_run()` its tokens arrive in one batch when the
-  tool returns. Push observers see them live (`ConsolePrinter` did, in the `--delegate` run).
+  tool returns. Push observers see them live (`ConsolePrinter` does, with `--delegate`).
 
 ### D164. The agent scope is entered around each resume, never held across a `yield`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - A ContextVar set inside a generator stays set in the *caller's* context while the generator is paused.
   Holding `agent_scope` across a yield would tag the consumer's own code (and anything it emits) as the
   agent. `_iter_step()` re-enters the scope for each `next()` (tested: the loop body sees depth -1).
 - This is easy to get wrong, because generators and context managers look like they compose.
 
-### D165. Tokens are `TokenStreamed` events on the bus; `iter_run()` is a pull view of the bus (your call)
+### D165. Tokens are `TokenStreamed` events on the bus; `iter_run()` is a pull view of the bus
 **Status:** accepted
 - **Options:** an event on the bus · tokens only in the iterator.
 - **Why:** one event vocabulary. `iter_run()` subscribes a buffer and empties it whenever the agent
@@ -1188,7 +1189,7 @@ from `agent.messages` afterwards.
   ignores them.
 
 ### D166. Streaming is opt-in per agent: `Agent(stream=True)`, with a separate `think_stream()` hook
-**Status:** open (made during implementation); the Bridge stage didn't trigger it (D201)
+**Status:** open; the Bridge stage didn't trigger it (D201)
 - `Thinking` calls `think_stream()` when `agent.stream` is true and `think()` otherwise. `fork(stream=True)`
   is allowed.
 - **Risk:** a subclass that overrides only `think()` is bypassed once streaming is on. The alternative is
@@ -1196,7 +1197,7 @@ from `agent.messages` afterwards.
 - **Revisit when** a subclass overrides thinking for real (e.g. stage 16's facade or a Bridge).
 
 ### D167. `iter_run()` is lazy, and breaking out leaves the agent at the start of the interrupted step
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Nothing starts until the first `next()`. A `break` mid-stream closes the step generator, which closes
   the provider stream (and its HTTP connection, via the providers' `finally`). The model call is
   counted, nothing is appended, and the state is still `thinking`, so `step()` thinks again from the
@@ -1205,12 +1206,12 @@ from `agent.messages` afterwards.
   `examples/stream.py` uses `contextlib.closing()` to make that explicit and portable.
 
 ### D168. `iter_continue()` drives the agent from its current state
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `follow_up()` and `restore()` move the agent without running it. `iter_continue()` is their pull-based
   counterpart to the `while not agent.done: agent.step()` loop.
 
 ### D169. Only text is streamed
-**Status:** open (made during implementation)
+**Status:** open
 - Tool-call argument fragments are assembled by the adapter and appear only in `Completed`. Reasoning
   tokens (DeepSeek's `delta.reasoning`, Anthropic's thinking blocks) aren't surfaced. `ModelCalled`
   has no time-to-first-token.
@@ -1218,13 +1219,12 @@ from `agent.messages` afterwards.
   latency matters (a `first_token_s` field, which changes the trace format, D147).
 
 ### D170. Anthropic streams through the SDK's `messages.stream()` helper
-**Status:** accepted, **unverified live** (made during implementation)
+**Status:** accepted; unverified against the real API
 - The helper assembles tool-use and thinking blocks (with signatures), and `get_final_message()` returns
-  the same object `create()` would, so `raw` replay keeps working. Tested with a fake client only: the
-  Anthropic key in `.env` returns 401.
+  the same object `create()` would, so `raw` replay keeps working. Tested with a fake client only.
 
 ### D171. How stage 15 touches the earlier open decisions
-**Status:** notes (made during implementation)
+**Status:** notes
 - **D99 (synchronous delivery):** still synchronous. Pull adds natural backpressure: the agent only
   advances when the consumer asks for the next event.
 - **D101 (no `RunFailed`):** a pull consumer gets the exception directly from its `for` loop, which is
@@ -1234,7 +1234,7 @@ from `agent.messages` afterwards.
   pull view would need a merge point.
 
 ### D172. Code after a generator's last `yield` may never run: wrappers act *at* `Completed`, consumers drain to the end
-**Status:** accepted (bug found in review, made during implementation)
+**Status:** accepted
 - **Bug:** `Thinking` returned as soon as it saw `Completed`, then closed the stream. `CircuitBreaker.stream()`
   recorded success *after* its loop, so under an agent a success never reset the failure count, and two
   failures with a success between them would have opened the breaker. A regression test reproduces it.
@@ -1249,7 +1249,7 @@ from `agent.messages` afterwards.
 
 ## Stage 16: Facade
 
-### D173. The facade is a `Harness` class that owns its subsystems and exposes them (your call)
+### D173. The facade is a `Harness` class that owns its subsystems and exposes them
 **Status:** accepted
 - **Options:** a `Harness` class · a factory function that returns a ready `Agent` · a one-shot
   `miniharness.run("task")` function.
@@ -1262,19 +1262,19 @@ from `agent.messages` afterwards.
   `cost`, `report()`.
 - **Cost:** a second way to build an agent. Bugs can now live in the wiring as well as in the parts.
 
-### D174. Flat keyword arguments with safe defaults; `model` takes a spec or a ready Provider (your call)
+### D174. Flat keyword arguments with safe defaults; `model` takes a spec or a ready Provider
 **Status:** accepted
 - **Options:** flat kwargs · a `HarnessConfig` dataclass · a fluent `Harness.builder()`.
 - **Why:** the signature documents itself, and the IDE completes it. A fluent builder would repeat
   what kwargs already do, which D21 rejected for `Agent` too. A config dataclass pays off once
   configuration comes from files. Here it only comes from code and CLI flags.
-- **Differs from the preview:** there's no separate `provider=` argument. `model` accepts either a
+- **One argument, not two:** there's no separate `provider=` argument. `model` accepts either a
   `"provider:model"` string or a `Provider` instance, the same as `build_stack()`. One parameter
   can't be set twice in conflicting ways, and tests pass a `MockProvider` straight in.
 - **Cost:** 17 parameters, and the list grows with every feature. **Revisit when** configuration
   needs to be saved, diffed or loaded from TOML. That's when to add the dataclass.
 
-### D175. The provider stack recipe is a public `build_stack()` in `providers/stack.py` (your call)
+### D175. The provider stack recipe is a public `build_stack()` in `providers/stack.py`
 **Status:** accepted; supersedes D54
 - **Why now:** D54 said "add a helper once the stack is built in more than one place". The facade
   and `examples/team.py` are those places. Like `default_prompt()` (D26), it's a Director written as a
@@ -1287,7 +1287,7 @@ from `agent.messages` afterwards.
 - **Tested:** the full layer order, the minimal stack, a lazy fallback that's never built, and cache
   hits that don't count against the budget.
 
-### D176. Side effects are denied unless `approve=` is given; the budget and the workspace are opt-out / opt-in (your call)
+### D176. Side effects are denied unless `approve=` is given; the budget and the workspace are opt-out / opt-in
 **Status:** accepted
 - **Options:** deny by default · ask on the terminal · allow everything.
 - **Why:** a library should never call `input()` on its own, because that hangs headless runs (CI, a
@@ -1296,18 +1296,18 @@ from `agent.messages` afterwards.
   passes its terminal prompt.
 - **The other defaults point the same way:** `budget=0.05` (pass `None` to disable), and file tools
   only exist when a `workspace` is given.
-- **Live:** with all defaults, the model tried `write_file`, got "needs approval and no approver is
-  available", and told the user it lacked permission. No file was written.
+- **Effect:** with all defaults, a `write_file` call gets "needs approval and no approver is
+  available", and the model can only report that it lacks permission. No file is written.
 
 ### D177. The facade shares one bus between the agent, the toolbox and every helper
-**Status:** accepted (made during implementation); settles D98 for the facade path
+**Status:** accepted; settles D98 for the facade path
 - D98 left the wiring to the caller, and forgetting it silently loses `ToolCalled`. The facade is
   exactly the place that knows all the parts, so it passes one bus to each. `Agent` itself still
   doesn't reach into its tools (D76 stays intact), so D98 stays open for hand-built agents.
 - `events=` lets a caller share a bus between several harnesses (or with a `Team`).
 
 ### D178. `stream()` turns streaming on for one run and mutes the facade's own console printer
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Whoever iterates `h.stream(task)` is the one displaying the run. If the `ConsolePrinter` kept
   printing, every token would be shown twice. The printer is subscribed through a closure that checks
   a mute flag, so it keeps its place in the subscriber order.
@@ -1317,44 +1317,42 @@ from `agent.messages` afterwards.
   make the simplest streaming loop print everything twice.
 
 ### D179. With a default budget, breaking out of `stream()` blocks the next model call
-**Status:** open (found while testing the facade); raises the priority of D160
+**Status:** open; makes D160 more visible
 - An abandoned stream records unknown cost (D160), and the budget fails closed on unknown cost (D48).
   Stage 15 only hit this with an explicit `--budget`. Now that every `Harness` has a budget by
-  default, any `break` followed by `step()` or `follow_up()` stops with `[stopped: budget]` (tested;
-  confirmed live: `cost: None` after breaking at "10").
+  default, any `break` followed by `step()` or `follow_up()` stops with `[stopped: budget]` (tested).
 - **Options:** (a) leave it, since it fails safe, and document it; (b) estimate the cost from the
   streamed text; (c) look up the real cost afterwards (OpenRouter's generation endpoint, D160).
-- **Revisit when** the Bridge stage touches providers, or as soon as someone breaks out of a stream
-  for real.
+- **Revisit when** breaking out of streams becomes a normal use, not an edge case.
 
 ### D180. The console printer is on by default
-**Status:** accepted (made during implementation; your preview had `console=True`)
+**Status:** accepted
 - `Harness().run(task)` shows progress immediately. That's what a learning harness and its examples
   want. **Cost:** a library that prints to stdout by default is unusual, so embedding code passes
   `console=False` (the tests do).
 
 ### D181. The facade doesn't load `.env`
-**Status:** accepted (made during implementation; found live)
+**Status:** accepted
 - Loading environment files is the application's job. A library that reads `.env` on import or
   construction surprises whoever deploys it. Examples call `load_dotenv()`.
-- **Live gotcha:** `load_dotenv()` with no arguments searches from the calling *script's* directory,
-  not the current directory. A script outside the repo found no key (`KeyError: 'OPENROUTER_API_KEY'`).
-  `load_dotenv(".env")` fixed it.
+- **Gotcha:** `load_dotenv()` with no arguments searches from the calling *script's* directory,
+  not the current directory. A script outside the repo finds no key (`KeyError: 'OPENROUTER_API_KEY'`);
+  `load_dotenv(".env")` names the file explicitly.
 
 ### D182. Checkpoints: autosave only on the main agent's events; `run()` never resumes silently
-**Status:** accepted (bug fixed while moving the code; made during implementation)
-- **Bug in the old `hello.py`:** the autosave observer reacted to *every* agent's events. With
+**Status:** accepted
+- **Failure mode:** an autosave observer that reacts to *every* agent's events breaks with sub-agents. With
   `--delegate --checkpoint`, a helper finishing (`RunFinished(state="done")` at depth 1) deleted the
-  main run's checkpoint mid-run, and every helper step re-saved the main agent mid-tool-call. The
+  main run's checkpoint mid-run, and every helper step re-saves the main agent mid-tool-call. The
   facade's observer ignores events with `depth > 0`.
 - `run(task)` always starts fresh. `resume()` finishes the saved run explicitly, and `saved_run`
   shows whether there is one. `hello.py` decides between them (and says so on screen). Silently
   ignoring the `task` argument in favor of a stale file would have been a surprising facade.
-- **Live:** `--checkpoint run.json --budget 0.0001` stopped after one call and kept the file. The rerun
-  resumed, finished, and deleted it.
+- **Example:** `--checkpoint run.json --budget 0.0001` stops after one call and keeps the file. A rerun
+  resumes, finishes, and deletes it.
 
 ### D183. `policies=` are added before the defaults; `tools=` replaces the default tool set
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - The facade's chain is `default_policy(approver)`, and extra policies go in front of it, so
   `MaxCalls("write_file", 5)` (kept in `hello.py`) is checked before `AllowReadOnly`.
 - `tools=[...]` replaces `default_tools(workspace)` but still goes into the facade's `Toolbox`, so
@@ -1362,7 +1360,7 @@ from `agent.messages` afterwards.
   the `Agent` by hand. The facade doesn't hide that path.
 
 ### D184. `add_helper()` only makes read-only sub-agents
-**Status:** open (made during implementation)
+**Status:** open
 - It wraps the stage 12 recipe: an `AgentTool` around an `Agent` that shares the provider (and so
   the budget), the bus and the streaming setting, and sees `ToolboxView.read_only(toolbox)`. In a
   read-only harness the main agent's view is rebuilt, because a view fixes its allow-list when it's
@@ -1372,7 +1370,7 @@ from `agent.messages` afterwards.
   actually needed.
 
 ### D185. The facade is not a Builder, and it reuses the Director
-**Status:** notes (made during implementation)
+**Status:** notes
 - **Builder** (stage 4) constructs *one complex object* step by step under assembly rules. **Facade**
   gives a *simple interface to a subsystem of many objects* and keeps using them after construction:
   `run()`, `report()`, `rewind()`. `Harness.__init__` does a builder-like job, but its value is the
@@ -1382,12 +1380,12 @@ from `agent.messages` afterwards.
   entirely.
 
 ### D186. `examples/hello.py` maps flags to `Harness`; `team.py` uses `build_stack`; `stream.py` stays hand-wired
-**Status:** accepted (made during implementation)
-- `hello.py` shrank from 165 to 95 lines, and almost all of what's left is argparse. Behavior changes:
-  the prompt also states the workspace, and fallback failures are now part of `report()`.
+**Status:** accepted
+- Almost all of `hello.py` is argparse. The prompt also states the workspace, and fallback failures
+  are part of `report()`.
 - `team.py` now gets `Retry` too, because the recipe always includes it.
 - `stream.py` still wires an `Agent` by hand on purpose. It shows the bare Iterator pattern with no
-  facade in between, and someone has to keep showing the parts.
+  facade in between, so the parts stay visible somewhere.
 
 ### D187. How stage 16 touches the remaining open decisions
 **Status:** notes
@@ -1401,7 +1399,7 @@ from `agent.messages` afterwards.
 
 ## Bonus stage: Bridge
 
-### D188. Two new agent types: `PlannerAgent` and `ReviewerAgent` (your call)
+### D188. Two new agent types: `PlannerAgent` and `ReviewerAgent`
 **Status:** accepted
 - **Options:** Planner + Reviewer · Planner only · a text-protocol ReAct agent · Reviewer only.
 - **Why:** a Bridge needs *two* hierarchies that both grow. Until now only the provider side grew
@@ -1411,11 +1409,11 @@ from `agent.messages` afterwards.
   3 agent types × any provider is 3 + N classes, not 3 × N.
 - **Why not ReAct:** with native tool calling, ReAct is mostly a prompt (Builder territory, stage 4).
   A text-parsing ReAct agent would re-implement what the adapters already do. It would be the right
-  choice for a provider *without* tool support, which we don't have.
+  choice for a provider *without* tool support, which this harness doesn't target.
 - **Revisit when** a third type is wanted (e.g. a human-in-the-loop agent): it should need nothing
   from the provider side.
 
-### D189. The types extend the loop through two new hooks and a `Planning` state (your call)
+### D189. The types extend the loop through two new hooks and a `Planning` state
 **Status:** accepted
 - **Options:** new hooks (`first_state()`, `after_answer()`) + a `Planning` state · override the
   existing hooks only (`initial_messages()` makes the plan call, `finish()` the review call) ·
@@ -1429,9 +1427,9 @@ from `agent.messages` afterwards.
   It *would* win if agent types needed to be combined (a planner that also reviews): with
   subclasses that's a third class or multiple inheritance. **Revisit when** a combination is wanted.
 - `after_answer()` defaults to `Done(self.finish(response))`, so `finish()` keeps working for
-  subclasses that override it (tested by the existing 257 tests).
+  subclasses that override it (the existing tests cover this).
 
-### D190. The implementor interface is the `Provider` protocol, unchanged (your call)
+### D190. The implementor interface is the `Provider` protocol, unchanged
 **Status:** accepted
 - **Options:** `Provider` as-is (`complete()` required, `stream()` optional via `stream_from()`) ·
   a narrower text-in/text-out protocol for side calls · `stream()` in the protocol.
@@ -1439,15 +1437,15 @@ from `agent.messages` afterwards.
   is exactly that, and every wrapper and provider already implements it. A narrower protocol
   would need implementing by all of them and would skip usage and cost reporting. Making `stream()`
   mandatory would reverse D157 and burden every test double.
-- **Honest note:** the implementor side needed **no new code** this stage. Every concrete
-  implementor (wrappers included) worked with the new agent types unchanged, which is the whole
+- **Note:** the implementor side needs **no new code** for this stage. Every concrete
+  implementor (wrappers included) works with the new agent types unchanged, which is the whole
   promise of the pattern. The parametrized test runs 3 agent types × 4 providers (Mock, OpenRouter
   and Anthropic over fake SDK clients, a wrapped Mock).
 - **Leak:** a planning call is a `complete(messages, tools={})`. Whether "no tools" is valid at that
   point is provider knowledge (Anthropic rejects tool blocks without tool definitions), so planning
   only happens at the start, where the conversation has no tool blocks yet (D194).
 
-### D191. `Harness(agent_type=PlannerAgent)`: the class is the factory (your call)
+### D191. `Harness(agent_type=PlannerAgent)`: the class is the factory
 **Status:** accepted
 - **Options:** an `agent_type=` class argument · string names through a registry
   (`agent="planner"`) · examples only.
@@ -1458,7 +1456,7 @@ from `agent.messages` afterwards.
 - `model` and `agent_type` are independent arguments. That's the Bridge as seen from the facade.
 
 ### D192. One `model_call()` helper for every state that calls the model
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `Thinking` and `Planning` both go through `lifecycle.model_call(agent, messages, tools=None)`. It
   checks `max_steps`, counts the call, streams (pausing at each token) when the agent streams, and
   emits `ModelCalled`. `tools=None` goes through the `think`/`think_stream` hooks; a dict asks the
@@ -1470,7 +1468,7 @@ from `agent.messages` afterwards.
   doesn't see the planning call. **Revisit when** a subclass needs to intercept *every* model call.
 
 ### D193. The plan request is shown to the model but not kept
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - The planning call sees the conversation plus a "write a numbered plan" request. The conversation
   then gets the plan (assistant) and "now carry out the plan" (user). Roles stay strictly
   alternating (system, user, assistant, user), which every provider accepts, and the plan stays in
@@ -1478,16 +1476,16 @@ from `agent.messages` afterwards.
 - **Cost:** the stored history reads as if the model planned unprompted.
 
 ### D194. The planning call gets no tools; the request names them; tool calls in a plan are dropped
-**Status:** accepted (made during implementation)
-- Our protocol has no `tool_choice`, so "no tools" is the only way to stop the model from acting
+**Status:** accepted
+- The `Provider` protocol has no `tool_choice`, so "no tools" is the only way to stop the model from acting
   during planning. To plan *with* the tools, the request lists their names and descriptions.
 - If a provider makes tool calls anyway, the plan is stored as a fresh text-only message (no
   `tool_calls`, no `raw`), so no unanswered tool call is replayed later (tested).
-- **Live:** deepseek wrote a 4-step plan naming `multiply`, `add` and `current_time`, then executed
-  it in the next call (two tools in parallel, then `add`).
+- **Typical run:** the model writes a numbered plan naming the tools it will use (`multiply`, `add`),
+  then executes it in the next call.
 
 ### D195. A review round is one more pass of the normal loop, with tools
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Options:** one round (append a review request, go back to `Thinking`) · two calls (critique
   without tools, then revise) · a separate `Reviewing` state.
 - **Why:** the revision may need tools to check a claim or fix a file, and the loop already knows how
@@ -1496,7 +1494,7 @@ from `agent.messages` afterwards.
   answer. **Revisit when** the critique itself is wanted (e.g. to show it, or to stop on "approved").
 
 ### D196. Whether a turn was reviewed is read from the conversation
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `ReviewerAgent` reviews once per turn: if the last user message is the review request, the turn was
   reviewed. No counter on the agent, so `checkpoint()`, `restore()` and `fork()` need no changes
   (tested: a fork restored mid-review doesn't review twice). Each `follow_up()` turn is reviewed again.
@@ -1504,11 +1502,10 @@ from `agent.messages` afterwards.
   finishes as before.
 - **Cost:** a user who types the exact review request would skip the review. Unlikely enough.
 
-### D197. The reviewer reviews with the same provider (found live)
+### D197. The reviewer reviews with the same provider
 **Status:** open
-- **Live:** asked for Canberra's population, deepseek drafted "approximately 481,000", was asked to
-  check unverified claims, couldn't (no tool for it), and kept the number with a hedge note. A model
-  reviewing itself shares its own blind spots.
+- **Limit:** asked to check an unverified factual claim with no tool to verify it, a model can only
+  hedge, not correct. A model reviewing itself shares its own blind spots.
 - A second provider for the critic (`ReviewerAgent(provider, critic=strong_model)`) would be a
   second implementor reference: the abstraction side would then hold two implementors. Easy to add,
   but it's the "per-request model choice" roadmap item, not this stage.
@@ -1521,28 +1518,28 @@ from `agent.messages` afterwards.
   step. GoF's Bridge is designed up front so that two hierarchies can grow independently; Strategy
   lets one object swap one behavior. The code that differs is only `agent_types.py`, two hooks and
   one state.
-- **Live cost of the abstraction side:** the same task cost 2 / 3 / 4 model calls and
-  $0.00045 / $0.00062 / $0.00095 as `Agent` / `PlannerAgent` / `ReviewerAgent`. Planning and reviewing
-  don't pay for trivial tasks.
+- **Cost of the abstraction side:** a simple tool task takes about 2 / 3 / 4 model calls as `Agent` /
+  `PlannerAgent` / `ReviewerAgent`, and cost grows with it. Planning and reviewing don't pay for
+  trivial tasks.
 
 ### D199. `add_helper()` sub-agents stay plain `Agent`s
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `agent_type=` applies to the main agent only. A planning or reviewing helper doubles the helper's
   calls inside every delegation, which nobody asked for. D184 (read-only helpers) is unchanged.
 - **Revisit when** a helper type is wanted: `add_helper(..., agent_type=)` is a one-line change.
 
 ### D200. `examples/bridge.py` runs the grid
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - Each agent type × each `-m` model, through `Harness`, with a report per cell. A failing cell (e.g.
-  the invalid Anthropic key) is reported and the grid carries on. `hello.py` gains `--agent`.
+  a missing API key) is reported and the grid carries on. `hello.py` gains `--agent`.
 
 ### D201. How the Bridge stage touches the open decisions
 **Status:** notes
 - **D166 (`think()` bypassed when streaming):** still open. The two new agent types didn't override
   thinking at all, they added *phases*, so the risk never came up. It's now narrower: side calls
   bypass `think()` in both modes (D192).
-- **Unverified live:** Anthropic (the key in `.env` returns 401). The Anthropic wire format of a
-  planning run (no `tools` on the first request, alternating roles) is covered by fake-client tests.
+- **Anthropic:** the wire format of a planning run (no `tools` on the first request, alternating
+  roles) is covered by fake-client tests.
 - **D17 (global provider registry) and D98 (bus wiring for a hand-built `Agent`):** untouched; they're
   the Singleton → dependency injection stage.
 
@@ -1550,13 +1547,13 @@ from `agent.messages` afterwards.
 
 ## Bonus stage: Singleton → dependency injection
 
-### D202. The textbook Singleton lives in a test file as a specimen; the library never ships it (your call)
+### D202. The textbook Singleton lives in a test file as a specimen; the library never ships it
 **Status:** accepted
 - **Options:** a specimen in `tests/test_singleton.py` next to the DI version · straight to DI with the
   Singleton only as a snippet in `PATTERNS.md` · two commits (a real `__new__` Singleton first, then
   the refactor).
-- **Why:** "naive first" says feel the smell before the fix, but the smell had already been felt for
-  real (D17: tests monkeypatching `_REGISTRY`). Shipping a Singleton only to remove it in the next
+- **Why:** "naive first" says feel the smell before the fix, but the smell is already present in the
+  code (D17: tests monkeypatching `_REGISTRY`). Shipping a Singleton only to remove it in the next
   commit would be ceremony. The specimen *runs*: it shows one instance, a "fresh" object that isn't
   fresh, state leaking from one test into the next, the reset fixture every test needs, and a
   dependency that no signature mentions. The DI tests sit right below it, written as the same scenarios.
@@ -1566,7 +1563,7 @@ from `agent.messages` afterwards.
   pool, one rate limiter shared by every provider) would still be one *instance* created at startup
   and injected, not a class that enforces it.
 
-### D203. A plain `ProviderRegistry` class, one default instance, and `registry=` wherever specs are resolved (your call)
+### D203. A plain `ProviderRegistry` class, one default instance, and `registry=` wherever specs are resolved
 **Status:** accepted; supersedes D17
 - **Options:** default instance + injectable · no global at all (`builtin_registry()` builds a fresh
   one, no decorator) · an ambient `ContextVar` (`with use_registry(r):`).
@@ -1588,7 +1585,7 @@ from `agent.messages` afterwards.
 - **Revisit when:** providers come from plugins (entry points, D16). A plugin loader would then
   return a registry instead of mutating the default.
 
-### D204. An `Agent` wires the Toolbox it builds; an injected Toolbox stays as its builder wired it (your call)
+### D204. An `Agent` wires the Toolbox it builds; an injected Toolbox stays as its builder wired it
 **Status:** accepted; settles D98
 - **Options:** wire what it builds · also fill in a missing bus on an injected Toolbox · leave open.
 - **Rule:** *whoever creates an object wires it.* With `tools=None` the Agent creates the default
@@ -1596,15 +1593,15 @@ from `agent.messages` afterwards.
   exactly the shortest path, `Agent(provider)`). An injected Toolbox was built by the caller, who is
   the composition root for it. Filling in its bus would mutate an object the Agent was only handed
   (against D76) and pick a winner when two agents share one Toolbox.
-- **Live:** `Agent(create_provider("openrouter:deepseek/deepseek-chat")).run("What is 19 * 21?")` now
-  reports `ToolCalled(multiply → 399)` on `agent.events`.
+- **Example:** `Agent(create_provider("openrouter")).run("What is 19 * 21?")` reports
+  `ToolCalled(multiply → 399)` on `agent.events`.
 - **Edge:** `agent.fork(events=other_bus)` shares the original's default Toolbox (and warns, D107), so
   the fork's tool calls still report to the *original's* bus. Pass `tools=` too, as the warning says.
 - **Revisit when:** someone hand-wires a Toolbox, forgets the bus and loses events: then a warning
   for an injected Toolbox without a bus is the next step, not auto-wiring.
 
 ### D205. `registry=None` means the default, resolved when the call is made; `lazy_provider` resolves at creation
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - `resolve(registry)` turns `None` into `default_registry` inside the function, instead of
   `registry=default_registry` as the parameter default. Same result today; the `None` form is the
   Python convention for mutable defaults and keeps signatures from importing an object.
@@ -1615,14 +1612,14 @@ from `agent.messages` afterwards.
 - **Cost:** a registry copied after the lazy provider was made isn't seen by it. That's the point.
 
 ### D206. `@register_provider` targets only the default; another registry uses its own `@mine.register(...)`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Options:** `register_provider(name, registry=None)` · the method on the instance.
 - **Why:** one obvious spelling per target. The decorator on the instance reads as what it does
   (`@mine.register("echo")`), and the module-level function stays the import-time convenience for
   the built-ins (D12, D16).
 
 ### D207. `copy()` is a shallow snapshot, not a parent chain
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Options:** `copy()` (independent dict of the same factories) · a child registry that falls back
   to a parent (`ChainMap`-style) · subclassing.
 - **Why:** both sides stay independent: registering in the copy never reaches the default, and
@@ -1632,15 +1629,15 @@ from `agent.messages` afterwards.
   loading). Then a chain, or copying later, would be needed.
 
 ### D208. A factory is any callable, not only a provider class
-**Status:** accepted (made during implementation)
-- `ProviderRegistry({"scripted": lambda model="s": MockProvider([...], model=model)})` works, and the
-  live check registered an alias, `cheap` → OpenRouter with a default model, in three lines. Tests use
+**Status:** accepted
+- `ProviderRegistry({"scripted": lambda model="s": MockProvider([...], model=model)})` works, so an
+  alias such as `cheap` → OpenRouter with a default model is three lines. Tests use
   it to give a name-built provider scripted responses, which also works around D20 (a factory-built
   mock has no script) without changing `MockProvider`.
 - **Cost:** D19 is unchanged (kwargs untyped), and a lambda's default `model` is invisible to `names()`.
 
 ### D209. D18 stays (duplicates raise); deliberate replacement is now "use a different registry"
-**Status:** accepted (made during implementation); eases D18's cost
+**Status:** accepted; eases D18's cost
 - D18's cost was "you can't replace a built-in without `replace=True`". With injection you don't
   mutate the shared registry at all: build `ProviderRegistry({"openrouter": PatchedOpenRouter, ...})`
   and pass it. No `remove()` or `replace=` was added; a registry is only ever added to.
@@ -1665,33 +1662,29 @@ from `agent.messages` afterwards.
 **Status:** notes
 - **D17:** superseded by D203. **D98:** settled by D204 (and D177 for the facade). **D18:** eased by
   D209. **D12/D16:** unchanged; the built-ins still self-register at import, into the default.
-- **Unverified live:** Anthropic (the key in `.env` returns 401). Nothing in this stage is
-  provider-specific: the registry hands Anthropic's class the same kwargs as before, covered by
-  `test_kwargs_pass_through_to_the_constructor`.
-- **Live (openrouter / deepseek-chat):** the default path (`Harness("openrouter:...")`, $0.0001); an
-  injected copy with a `cheap` alias plus a `cheap:qwen/qwen3-coder` fallback that stayed lazy (3
-  calls, $0.00068, answer 395); `Harness("cheap")` *without* `registry=` failing at startup with
-  "Unknown provider 'cheap'"; and the default registry unchanged afterwards.
+- Nothing in this stage is provider-specific: the registry hands each class the same kwargs as
+  before, covered by `test_kwargs_pass_through_to_the_constructor`.
+- **Behavior to expect:** an injected copy with a `cheap` alias works, and a lazy fallback on it stays
+  unbuilt until needed; `Harness("cheap")` *without* `registry=` fails at startup with
+  "Unknown provider 'cheap'"; the default registry is unchanged afterwards.
 
 ### D212. Crediting refactoring.guru
-**Status:** accepted (your call)
-- **Why:** the project learned its patterns from refactoring.guru, and you wanted to respect the
-  authors' [Content Usage Policy](https://refactoring.guru/content-usage-policy) as fully as possible.
-- **Audit:** nothing in the repo copies the site's text, code examples or illustrations. All of the
-  book and the docs are original prose. The only mentions were in the README (linked) and in the
-  preface (not linked).
-- **Done:** linked the preface mention; linked every chapter's pattern name to its catalogue page
-  (chapter 3's Factory goes to the factory comparison page, since the registry is a simple factory
-  rather than Factory Method); added a Credits section to the README that states the policy's
-  limits, so future additions stay inside them.
+**Status:** accepted
+- **Why:** the pattern catalogue follows refactoring.guru, whose
+  [Content Usage Policy](https://refactoring.guru/content-usage-policy) allows linking and
+  original writing about the patterns, not copying.
+- **Rule:** nothing in the repo copies the site's text, code examples or illustrations; the book and
+  docs are original prose. Every chapter links its pattern name to the catalogue page (chapter 3's
+  Factory goes to the factory comparison page, since the registry is a simple factory rather than
+  Factory Method), and the README's Credits section states the policy's limits.
 - **Revisit:** if a quote or illustration is ever added, link that specific page next to it.
 
 ---
 
-## Review before publishing
+## Corrections and hardening
 
 ### D213. Fixes from a full review of the code and the docs
-**Status:** accepted (your call to fix; the shapes below were made during implementation)
+**Status:** accepted
 - **Overloaded Anthropic API wasn't transient.** The SDK raises `OverloadedError` for 529, and it is
   *not* a subclass of `InternalServerError`, so the comment "5xx, including overloaded" was wrong and an
   overloaded API neither fell back nor tripped the breaker. `transient_errors()` now lists it. **Still
@@ -1720,14 +1713,11 @@ from `agent.messages` afterwards.
   `IrreversibleError` at a change that can't be undone (D34).
 - **Tests added:** every fix above has a regression test, plus `report()` with cache and fallback together
   (the D103 path, untested until now) and a stopped run's checkpoint round trip.
-- **Docs corrected:** an empty `ANTHROPIC_API_KEY` only shadows the profile in some tools (the `ant`
-  CLI), not in the Python SDK this project pins; stale counts (decisions, tests, open decisions); the
-  stage-2 promise was made in `PATTERNS.md`, not the README; three tools before stage 5, not four; the
-  budget belongs to a `Harness`, not to one run; the epilogue's "found by live runs" table now says which
-  bugs were found by rereading code; dated names (Claude Code's Agent tool, the OpenAI Agents SDK).
+- **Docs:** an empty `ANTHROPIC_API_KEY` only shadows the profile in some tools (the `ant` CLI), not
+  in the Python SDK this project pins; the budget belongs to a `Harness`, not to one run.
 
 ### D214. Hardening from a security audit
-**Status:** accepted (your call to fix; the shapes below were made during implementation)
+**Status:** accepted
 - **Audit:** the whole repo, not just a diff. No high- or medium-severity issue: the workspace sandbox
   (D31) catches `..`, absolute paths and symlinks; there is no shell tool; side effects are
   denied without an approver; checkpoints are JSON; secrets come from the environment and none are in
@@ -1740,7 +1730,7 @@ from `agent.messages` afterwards.
   cache to JSON (removes the risk, but every response type would need a serializer, like checkpoints).
   **Chosen:** `Harness` raises `ValueError` before it creates anything, comparing resolved paths so a
   symlink can't hide the overlap. **Costs:** only the facade checks; `build_stack(cache=...)` with
-  hand-built file tools is still on you, as `DiskCache`'s docstring says. JSON stays the fix if the
+  hand-built file tools is the caller's responsibility, as `DiskCache`'s docstring says. JSON stays the fix if the
   cache ever stops being development-only.
 - **`HtmlReport` didn't escape a run's state.** The only trace field written into the page raw, in a
   `class` attribute and in the text. The harness only writes `done`/`stopped`, so only a hand-crafted
@@ -1756,11 +1746,11 @@ from `agent.messages` afterwards.
 
 ## Bonus stage: Concurrent tools
 
-### D215. Consecutive read-only calls run together; a call with side effects runs alone (your call)
+### D215. Consecutive read-only calls run together; a call with side effects runs alone
 **Status:** accepted; supersedes D39
 - **Context:** a model often asks for several tools in one turn (read three files, then answer). Run
   one after another, the turn takes as long as all of them added up. D39 kept them sequential because
-  stage 5 saw `write_file` and `read_file` of the same path in one turn, which would race.
+  a model can send `write_file` and `read_file` of the same path in one turn, which would race.
 - **Options:** consecutive read-only calls together, side effects as barriers · every call at once ·
   a new per-tool opt-in flag (`parallel_safe = False` by default).
 - **Chosen:** the calls are cut into groups in the model's order. A run of consecutive read-only calls
@@ -1774,7 +1764,7 @@ from `agent.messages` afterwards.
   harness can't tell which paths a call touches. A read-only tool that isn't thread-safe needs the
   opt-out of D216.
 
-### D216. Leaf tools only: `AgentTool` stays sequential, through a `thread_safe` flag (your call; the flag made during implementation)
+### D216. Leaf tools only: `AgentTool` stays sequential, through a `thread_safe` flag
 **Status:** accepted; parallel sub-agents are the logged next step
 - **Options:** leaf tools first · sub-agents (read-only helpers) in parallel too.
 - **Why leaf tools first:** two sub-agents running at once would put two runs' events on one bus at
@@ -1792,7 +1782,7 @@ from `agent.messages` afterwards.
 - **Revisit when** parallel helpers are wanted: run ids on events, id-based trace pairing, and locks
   in `LazyProvider`, `CircuitBreaker` and `BudgetGuard`.
 
-### D217. Threads, not asyncio (your call)
+### D217. Threads, not asyncio
 **Status:** accepted
 - **Options:** a `ThreadPoolExecutor` in the Toolbox · asyncio (`async def` tools and an event loop).
 - **Why:** every tool, provider and `Agent.step()` is synchronous. Asyncio would mean `async def` all
@@ -1803,7 +1793,7 @@ from `agent.messages` afterwards.
 - **Revisit when** tools or providers become async for another reason (streaming several model calls
   at once, for example).
 
-### D218. A group's `ToolCalled` events are emitted after the group finishes, in the model's order (your call)
+### D218. A group's `ToolCalled` events are emitted after the group finishes, in the model's order
 **Status:** accepted
 - **Options:** in the model's call order, after the group · live, as each call finishes.
 - **Why:** event order stays deterministic, so traces from two runs compare line by line and the
@@ -1815,7 +1805,7 @@ from `agent.messages` afterwards.
   need a lock in `EventBus.emit()` and observers that don't assume an order.
 
 ### D219. Policies decide each group's calls in order, on the calling thread, before the group runs
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** a policy chain is stateful (`MaxCalls` counts) and an approver may ask a human with
   `input()`. Deciding in the worker threads would race the counter and ask questions in random order
   from random threads. Deciding per *group*, not for the whole turn at once, keeps today's timing for
@@ -1823,7 +1813,7 @@ from `agent.messages` afterwards.
 - Unknown and denied calls never reach a worker; their outputs are ready before the group starts.
 
 ### D220. Each worker runs in a copy of the caller's context
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Trap:** a `ContextVar` (`agent_scope`, D123) is *not* inherited by a thread pool's threads. Without
   a copy, a tool running in a worker sees no agent at all (`current_depth() == -1`), and anything it
   emits would be tagged with an empty agent name at depth 0.
@@ -1833,10 +1823,10 @@ from `agent.messages` afterwards.
   sub-agents run in parallel (D216).
 
 ### D221. Opt-in: `Toolbox(max_workers=1)` by default; `execute_all()` is optional on a `ToolSet`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Opt-in** like streaming (D166): with `max_workers=1` there are no groups at all, so each call is
-  decided, run and reported before the next one is looked at, exactly as before (an early draft grouped
-  anyway and only skipped the pool, which delayed a read's `ToolCalled` until the next read had run).
+  decided, run and reported before the next one is looked at, exactly as before (grouping anyway and
+  only skipping the pool would delay a read's `ToolCalled` until the next read had run).
   `Harness(tool_workers=4)` turns it on through the facade.
 - **Shape:** `Toolbox.execute_all(calls) -> list[str]`, and `execute(call)` is now `execute_all([call])[0]`,
   so there is one code path. `Agent.act()` calls `execute_all()` when the tool set has it and falls
@@ -1848,7 +1838,7 @@ from `agent.messages` afterwards.
   change. Without this, a `Harness(read_only=True)` agent would silently lose all concurrency.
 
 ### D222. One thread pool per parallel group, not one per Toolbox
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Why:** a pool owned by the Toolbox would need a `close()` that every owner remembers to call, or
   threads left waiting at exit. A pool per group starts a few threads per turn, which is microseconds
   next to a model call. A group of one call, or `max_workers=1`, never makes a pool.
@@ -1870,53 +1860,51 @@ from `agent.messages` afterwards.
 
 ## CI pipeline
 
-### D224. What CI runs, and how it's hardened (your calls on Semgrep, ruff and mypy)
+### D224. What CI runs, and how it's hardened
 **Status:** accepted
 - **Jobs:** `lint` (ruff check + format check), `typecheck` (mypy), `test` (pytest with coverage on
   3.12, 3.13 and 3.14), `deps` (both lockfiles current, pip-audit), `sast` (Semgrep), `secrets`
   (gitleaks over the full history), `workflows` (actionlint, zizmor). Triggers: PRs, pushes to
   `main`, Mondays for new advisories and rules, and by hand.
-- **Hardening,** the same as the other repos: `permissions: {}` with read-only jobs, no secrets,
+- **Hardening:** `permissions: {}` with read-only jobs, no secrets,
   `persist-credentials: false`, every action pinned to a commit SHA (zizmor enforces it), uv pinned
   by version *and* checksum, Go tools fetched as digest-checked release archives, and Dependabot with
-  a 7-day cooldown. New tool versions were picked at least 7 days old for the same reason.
-- **Semgrep (your call): Semgrep CE, no account.** `semgrep scan` with `p/python`,
+  a 7-day cooldown. New tool versions are picked at least 7 days old for the same reason.
+- **Semgrep CE, no account.** `semgrep scan` with `p/python`,
   `p/security-audit` and `p/secrets`, `--metrics=off`. **Options:** CE with no token · `semgrep ci`
   with a Semgrep AppSec token (cross-file taint, supply-chain reachability, a dashboard). **Cost:** no
   cross-file analysis, and the registry rulesets aren't versioned, so a new rule can turn a run red
-  without a commit. **Correction:** Semgrep Cloud's managed scans were already on for this repo
-  (the `semgrep-cloud-platform/scan` check, run by Semgrep's GitHub App on its own servers). That
-  doesn't show in the repo or in a token's view of its secrets, which is why it was missed.
-- **Both Semgrep scans stay (your call).** **Options:** both · Semgrep Cloud only · the CI job only.
+  without a commit. Semgrep Cloud's managed scans also run on this repo (the
+  `semgrep-cloud-platform/scan` check, run by Semgrep's GitHub App on its own servers); that
+  doesn't show in the repo itself.
+- **Both Semgrep scans stay.** **Options:** both · Semgrep Cloud only · the CI job only.
   **Why:** they answer different questions. Semgrep Cloud adds cross-file analysis and supply-chain
   reachability, with findings in its dashboard and no token in CI. The `sast` job fails the run on
   any finding, runs the same way locally, and keeps working if the app is removed. **Cost:** a
   finding can show up twice, and a suppression may need a `nosemgrep` comment (which both read) or a
   triage in the dashboard, which only Semgrep Cloud reads.
-- **Ruff (your call): its defaults, line length 88.** Ruff 0.17's default rule set is broad (about
+- **Ruff: its defaults, line length 88.** Ruff 0.17's default rule set is broad (about
   400 rules), so no `select` list. One mechanical formatting commit, listed in
   `.git-blame-ignore-revs`. RUF012 is off: `Tool.parameters` is a declarative class attribute.
-- **mypy (your call) on `src/` only,** with `check_untyped_defs`. **Options:** mypy on src (25
-  errors) · pyright on everything (160) · later. `--strict` would add 23 more errors; tightening is
-  open. Tests and examples aren't type-checked.
-- **Coverage floor 95%,** with 97% measured when CI was added: high enough to notice untested new
+- **mypy on `src/` only,** with `check_untyped_defs`. **Options:** mypy on src · pyright on
+  everything (many more errors to fix first) · later. `--strict` is open. Tests and examples aren't type-checked.
+- **Coverage floor 95%,** a little below what the suite reaches: high enough to notice untested new
   code, with room to spare so one refactor doesn't go red.
 
 ### D225. The CI tools have their own lockfile in `.github/tools`
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **Context:** Semgrep, pip-audit and zizmor first went into a `security` dependency group of the
   app. uv resolves every group together, and Semgrep pins `opentelemetry-api~=1.37.0`, so the app's
-  own copy (via `anthropic`) was quietly pulled down from 1.45.1 to 1.37.0, which has a CVE.
+  own copy (via `anthropic`) gets quietly pulled down to 1.37.0, which has a CVE.
 - **Options:** a separate uv project for the tools · `uvx semgrep==…` in CI (no lock, no hashes) ·
   uv `conflicts` between groups (can't separate a group from the project's own dependencies).
 - **Chosen:** a separate project. Tools stay hash-locked, Dependabot bumps them, and the app's
   resolution is exactly what it was without them. **Cost:** a second lockfile.
 
 ### D226. Fixes made so the checks could pass
-**Status:** accepted (made during implementation)
+**Status:** accepted
 - **`Provider.model` is a read-only property in the protocol.** As a plain `model: str` it's a
-  settable attribute, which the wrappers' delegating property doesn't satisfy (14 of mypy's 25
-  errors). Code that reads `.model` is unaffected.
+  settable attribute, which the wrappers' delegating property doesn't satisfy. Code that reads `.model` is unaffected.
 - **`Agent.answer`** returns a finished run's answer (a stopped run's says why) and raises
   `RuntimeError` before then. It replaces five reads of `state.answer`, which only `Done` and
   `Stopped` have.
@@ -1931,9 +1919,9 @@ from `agent.messages` afterwards.
   when an ignore goes stale.
 
 ### D227. Three more ignored `mcp` advisories in the CI tools
-**Status:** accepted (made during implementation, under Auto-fix)
+**Status:** accepted
 - **Context:** CVE-2026-116684, CVE-2026-116685 and CVE-2026-116686 (all `mcp` 1.29.0, fixed in
-  1.30.0) turned the `deps` job red without a commit. Semgrep 1.181.0 pins `mcp==1.29.0`, and so does
+  1.30.0) can turn the `deps` job red without a commit. Semgrep 1.181.0 pins `mcp==1.29.0`, and so does
   1.182.1, its newest release, so no bump lets the fix in.
 - **What they are:** server bearer-token auth accepting another resource server's tokens; client
   transports following cross-origin redirects with custom headers; the client fetching `$ref` URLs
@@ -1943,17 +1931,16 @@ from `agent.messages` afterwards.
   no exceptions.
 
 ### D228. Required checks on `main`, through a ruleset kept in the repo
-**Status:** accepted (your call on the bypass; the rest made during implementation)
-- **Context:** GitHub Free enforces rulesets only on public repos, so this one applies once the repo
-  is public. Until then a red run only meant "don't merge yet" (D224).
+**Status:** accepted
+- **Context:** GitHub Free enforces rulesets only on public repos.
 - **Rules:** every CI job is a required check (`lint`, `typecheck`, the three `test (...)` matrix
   legs, `deps`, `sast`, `secrets`, `workflows`); changes reach `main` only through a PR; no force
   pushes, no deleting the branch.
-- **Bypass (your call): admins, on PRs only.** **Options:** admin bypass on PRs only · no bypass ·
+- **Bypass: admins, on PRs only.** **Options:** admin bypass on PRs only · no bypass ·
   admin bypass always. **Why:** `deps` and `sast` can turn red with no commit (D224, D227), and an
   unrelated fix shouldn't wait for that. The bypass is a visible checkbox on a PR; a direct or
   forced push to `main` is refused for everyone. **Cost:** the rule is only as strict as the admin.
-- **Small calls:** 0 required approvals (a solo maintainer can't approve their own PR); the branch
+- **Details:** 0 required approvals (a solo maintainer can't approve their own PR); the branch
   needn't be up to date before merging (less churn with Dependabot, at the cost of merging a PR
   tested against an older `main`); each check is pinned to the GitHub Actions app
   (`integration_id` 15368), so a status with the same name from another app can't satisfy it.

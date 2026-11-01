@@ -1,12 +1,12 @@
 # miniharness
 
-A small LLM agent harness built from scratch to learn the classic design patterns by applying them to a
-real system: a tool-use loop with pluggable providers, sandboxed tools with undo, permission policies,
-retries and budgets, tracing, checkpoints, streaming and sub-agents.
+A small LLM agent harness for learning the classic design patterns by applying them to a real system:
+a tool-use loop with pluggable providers, sandboxed tools with undo, permission policies, retries and
+budgets, tracing, checkpoints, streaming and sub-agents.
 
-Each pattern was added only when the code needed it. The [study book](docs/book/README.md) tells that
-story chapter by chapter, and [`DECISIONS.md`](DECISIONS.md) records every design decision with its
-trade-offs.
+Each pattern appears only where the code needs it. The [book](docs/book/README.md) walks through the
+build chapter by chapter, [`DECISIONS.md`](DECISIONS.md) gives the rationale and trade-offs behind every
+design choice, and [`PATTERNS.md`](PATTERNS.md) is a workbook with an exercise per pattern.
 
 ## Quickstart
 
@@ -86,7 +86,7 @@ Next: per-request model choice (cheap vs strong), Strategy part 2.
 
 ## Layout
 
-All under `src/miniharness/`. [`PATTERNS.md`](PATTERNS.md) has a short journal entry per pattern.
+All under `src/miniharness/`.
 
 | Path | Contents |
 |---|---|
@@ -108,7 +108,9 @@ uv run pytest --cov               # 95% coverage floor
 ```
 
 [CI](.github/workflows/ci.yml) runs these on Python 3.12–3.14, plus pip-audit, Semgrep, gitleaks over
-the full history, and actionlint and zizmor on the workflows. CI-only tools are locked separately in
+the full history, and actionlint and zizmor on the workflows. It also fails if a commit's author or
+committer email isn't a GitHub `noreply` address, or if a tracked file contains a home directory path, so
+set `git config user.email` to your noreply address (GitHub → Settings → Emails) before committing. CI-only tools are locked separately in
 [`.github/tools`](.github/tools/pyproject.toml).
 
 ## Credits
