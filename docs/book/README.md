@@ -1,11 +1,11 @@
 # Building an Agent Harness, One Pattern at a Time
 
-*The story of `miniharness`: what we built, what broke, what we decided, and why.*
+*Classic design patterns, introduced one at a time as a small LLM agent harness needs them.*
 
-This book retells the project from the first scaffold to the last refactor. Each chapter is one stage: the
-problem that made a design pattern necessary, the options that were on the table, the choice and its
-reasoning, and what real model runs taught us that tests couldn't. It's written to be **read**, start to
-finish or one chapter at a time, not run.
+The book builds `miniharness` from the first scaffold to the last refactor. Each chapter is one stage: the
+problem that makes a design pattern necessary, the options, the design the code uses and why, and the
+failure modes that real model runs expose and tests don't. Read it start to finish or one chapter at a time,
+and run the code alongside it.
 
 Decisions are referenced by number (**D63**, **D136**, ...). Each one has a full entry in
 [`DECISIONS.md`](../../DECISIONS.md) with every option and trade-off, if you want the long version. Your own
@@ -13,7 +13,7 @@ notes belong in [`PATTERNS.md`](../../PATTERNS.md), under each pattern's "Your n
 
 ## Contents
 
-**[Preface: how this project worked](00-preface.md)**
+**[Preface: how this book works](00-preface.md)**
 
 **Part I: Foundations**
 1. [The naive start: a loop and an ugly function](01-the-naive-start.md) (Template Method)

@@ -11,3 +11,11 @@ workspace/
 .coverage
 .mypy_cache/
 .ruff_cache/
+
+# Local-only files that can hold machine paths (the agent's system prompt
+# includes the working directory, so traces and checkpoints do too).
+.claude/settings.local.json
+.claude/worktrees/
+*.jsonl
+/*.json
+/*.html

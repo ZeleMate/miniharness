@@ -69,7 +69,7 @@ from its tools, so it asks for a two-method protocol.
 providers extend the factory without editing it.
 
 **Optimistic concurrency.** Assume nobody else changed something, but check before acting, and refuse if they
-did. Undo refuses when a file changed after our write.
+did. Undo refuses when a file changed after the tool wrote it.
 
 **Post-order.** Children reported before their parent. Nested agent events arrive this way.
 

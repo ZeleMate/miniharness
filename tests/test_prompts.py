@@ -61,7 +61,7 @@ def test_repeated_calls_append_rules_but_replace_identity():
 
 
 def test_mutable_builder_is_shared_state():
-    # The trade-off we accepted (DECISIONS.md D21): branching off a builder mutates it
+    # The accepted trade-off (DECISIONS.md D22): branching off a builder mutates it
     base = SystemPromptBuilder().identity("A.")
     base.instructions("terse")
 

@@ -5,15 +5,15 @@
 
 ## A chain is not a stack
 
-Chapter 6's decorator stack and this chapter's chains look alike, since both are sequences of objects
-with the same interface. The difference is the heart of the pattern:
+Chapter 6's decorator stack and this chapter's chains look alike, since both are sequences of objects with
+the same interface. The difference is the heart of the pattern:
 
 - In a **Decorator** stack, *every* layer runs, each adding something on the way through.
 - In a **Chain of Responsibility**, each handler gets a chance to *handle* the request and stop it there.
   The request only travels further if a handler passes it on.
 
 A decorator answers "what else happens?". A chain answers "**who deals with this?**" (D55). This stage
-built two chains: one deciding whether a tool call may run, and one deciding which model answers.
+builds two chains: one deciding whether a tool call may run, and one deciding which model answers.
 
 ## The permission chain
 
@@ -33,60 +33,59 @@ policy = PolicyChain(
 )
 ```
 
-Each policy returns a decision or `None` (no opinion), and **the first decision wins**. You chose a plain
-list over GoF's linked handlers, where each handler holds a `next` reference (D56). Same intent, different
-structure: the list can't suffer the classic linked-chain bug of a handler forgetting to call `next`, and
-reordering means editing a list.
+Each policy returns a decision or `None` (no opinion), and **the first decision wins**. The chain is a
+plain list rather than GoF's linked handlers, where each handler holds a `next` reference (D56). Same
+intent, different structure: the list can't suffer the classic linked-chain bug of a handler forgetting to
+call `next`, and reordering means editing a list.
 
 When nothing decides, the call is **denied** (D58), the same fail-closed stance as the budget.
 
 ## Separating "ask" from "how to ask"
 
-A refinement came up while designing: a policy can return a third verdict, `ASK`, and the chain resolves
-it with an injected approver (D57). That splits two concerns. *Deciding to ask* is policy. *How to ask*
-(a terminal prompt, a Slack message, a web UI) is infrastructure. The policies stay pure and testable, and
-an unattended run with no approver turns `ASK` into `DENY`.
+A policy can return a third verdict, `ASK`, which the chain resolves with an injected approver (D57). That
+splits two concerns. *Deciding to ask* is policy. *How to ask* (a terminal prompt, a Slack message, a web
+UI) is infrastructure. The policies stay pure and testable, and an unattended run with no approver turns
+`ASK` into `DENY`.
 
-Every decision also records its reason and *which policy made it* (D61), because "why was this allowed?"
-is the first question anyone asks when a permission system surprises them:
+Every decision also records its reason and *which policy made it* (D61), because "why was this allowed?" is
+the first question anyone asks when a permission system surprises them:
 
 ```
 denied write_file: write_file needs approval and was declined (by AskBeforeSideEffects)
 ```
 
-A denial goes back to the model as the tool's result (D59), and in the live run the model explained to the
-user that it lacked permission and asked how to proceed. The run degraded gracefully instead of crashing.
+A denial goes back to the model as the tool's result (D59). The model can then explain that it lacks
+permission and ask how to proceed, so the run degrades gracefully instead of crashing.
 
-One honest renaming: the preview called a policy `RateLimit`, but it had no time window, only a total. It
-became `MaxCalls` (D62). Names that promise behavior the code doesn't have are small lies that cost
-debugging time later.
+Naming matters here too. A policy that counts calls with no time window is a quota, not a rate limit, so
+it's called `MaxCalls` (D62). A name that promises behavior the code doesn't have costs debugging time
+later.
 
-## The fallback chain, and the bug it hid
+## The fallback chain, and the bug it can hide
 
-The second chain tries providers in order: `FallbackChain([anthropic, openrouter])`. If the first fails,
-the next gets the request.
+The second chain tries providers in order: `FallbackChain([anthropic, openrouter])`. If the first fails, the
+next gets the request.
 
-The first version fell back on *any* API error. Then a live run, with an Anthropic model as primary, got
-`401 invalid x-api-key`, and the chain quietly answered with DeepSeek instead. It looked like success. In
-fact a broken key was being **hidden**, and money was being spent on a different model.
+The naive version falls back on *any* API error. Then an invalid API key on the primary produces
+`401 invalid x-api-key`, and the chain quietly answers with the backup model instead. It looks like
+success. In fact a broken key is being **hidden**, and money is being spent on a different model.
 
-The fix (D63) is a lesson that reaches well beyond this project: decide which failures mean "try someone
-else" and which mean "you have a bug". Connection errors, timeouts, rate limits and server errors are
-*transient*, so falling back makes sense. A bad key, a malformed request or an unknown model is
-*configuration*, and falling back only hides it. The chain now falls back on transient errors only, and
-configuration errors surface loudly. **A fallback that catches everything is a bug-hider.**
+The rule (D63) reaches well beyond this project: decide which failures mean "try someone else" and which
+mean "you have a bug". Connection errors, timeouts, rate limits and server errors are *transient*, so
+falling back makes sense. A bad key, a malformed request or an unknown model is *configuration*, and falling
+back only hides it. The chain falls back on transient errors only, and configuration errors surface loudly.
+**A fallback that catches everything is a bug-hider.**
 
-A refusal is treated as a reason to try the next provider too, but if the last one refuses, its refusal is
-returned as a normal answer (D64): a refusal is an answer, not an error.
+A refusal is also a reason to try the next provider, but if the last one refuses, its refusal is returned
+as a normal answer (D64): a refusal is an answer, not an error.
 
-## Problems noticed and deferred
+## Known gaps
 
-The same live run exposed another flaw: "fell back" was printed *twice*, because each of the agent's model
-calls tried the broken provider first again (D65). That costs latency and money on every turn. The fix is a
-circuit breaker, and it waited for chapter 9, where it's a textbook example of State. Two subtler gaps were
-logged too: a refused response that the chain skips was still billed, but an outer tracker never sees it
-(D66, fixed in the review before publishing, D213), and after a fallback one conversation mixes providers,
-the `raw` leak from chapter 2 in action (D67).
+Without more machinery, each of the agent's model calls tries the broken primary first again (D65), which
+costs latency and money on every turn. The fix is a circuit breaker, a textbook example of State, in
+chapter 9. Two subtler gaps: a refused response that the chain skips is still billed, but an outer tracker
+never sees it (D66, fixed by D213), and after a fallback one conversation mixes providers, the `raw` leak
+from chapter 2 in action (D67).
 
 ## The one thing to remember
 

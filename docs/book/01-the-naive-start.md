@@ -10,15 +10,15 @@ Every agent harness, however sophisticated, has the same loop at its heart:
 2. If the model asked for tools, run them, add their results to the conversation, and go back to 1.
 3. Otherwise, the model's reply is the answer.
 
-The first scaffold was exactly that loop, plus a handful of neutral data types that the rest of the code
-would speak: a `Message` (a role, some text, maybe tool calls), a `ToolCall` (an id, a name, arguments),
-and an `LLMResponse` (the assistant's message plus *why* it stopped: finished, wants tools, ran out of
-tokens). Three tools to start with: `add`, `multiply` and `current_time`. And a `MockProvider` that replays
-scripted replies, so the loop could be tested without spending a cent.
+The first scaffold is exactly that loop, plus a handful of neutral data types the rest of the code speaks:
+a `Message` (a role, some text, maybe tool calls), a `ToolCall` (an id, a name, arguments), and an
+`LLMResponse` (the assistant's message plus *why* it stopped: finished, wants tools, ran out of tokens).
+Three tools to start with: `add`, `multiply` and `current_time`. And a `MockProvider` that replays scripted
+replies, so the loop can be tested without a network or an API key.
 
 ## Template Method: a fixed skeleton with replaceable steps
 
-The loop was written so its *structure* was fixed, but each step was a method a subclass could override:
+The loop's *structure* is fixed, but each step is a method a subclass can override:
 
 ```python
 class Agent:
@@ -36,17 +36,17 @@ class Agent:
 agent that logs every tool call? Override `act()`. Want a different final format? Override `finish()`.
 The loop itself never changes.
 
-This is the oldest trick in object-oriented design, and it has a well-known limit: inheritance gives you
-**one axis of variation per subclass**. A `LoggingAgent` and a `PoliteAgent` can't be combined without a
-third class. That limit is exactly why the next chapter reached for composition instead.
+This is one of the oldest tools in object-oriented design, and it has a well-known limit: inheritance gives
+you **one axis of variation per subclass**. A `LoggingAgent` and a `PoliteAgent` can't be combined without a
+third class. That limit is why the next chapter reaches for composition instead.
 
-The hooks proved durable, though. Sixteen stages later, the Bridge chapter added two more
-(`first_state` and `after_answer`) to build new kinds of agents, and the lifecycle states of chapter 9 call
-these same hooks, so every subclass kept working through every refactor.
+The hooks are durable, though. The Bridge chapter adds two more (`first_state` and `after_answer`) to build
+new kinds of agents, and the lifecycle states of chapter 9 call these same hooks, so subclasses keep working
+through every later refactor.
 
 ## The deliberately ugly part
 
-The provider code was written badly *on purpose*. One function did everything:
+The provider code starts out bad *on purpose*. One function does everything:
 
 ```python
 def call_llm(provider, model, messages, tools):
@@ -60,31 +60,30 @@ def call_llm(provider, model, messages, tools):
         # ...fifty lines translating messages to Anthropic's format, inline...
 ```
 
-Its docstring listed what should bother a reader: every new provider means editing this function; clients
-are rebuilt on every call; translation can't be tested without a network; the mock reads a global that
-tests must remember to clear. The point wasn't to fix any of it yet. It was to **feel it first**, so that
-the fix in chapter 2 would be an answer to a real problem rather than a pattern applied for its own sake.
+Its smells are worth listing explicitly: every new provider means editing this function; clients are
+rebuilt on every call; translation can't be tested without a network; the mock reads a global that tests
+must remember to clear. None of this gets fixed yet. The point is to **see the problem first**, so that the
+fix in chapter 2 answers a real problem rather than applying a pattern for its own sake.
 
-## First contact with real models
+## What real models add
 
-Both providers worked on the first live run, and the differences were already interesting. Asked
-*"What is (17 × 23) + 4?"*, DeepSeek called `multiply` and then did the `+ 4` in its head. Claude called
-`multiply` and *then* `add`, one extra round trip. Whether a model actually uses its tools varies a lot,
-which is one reason a harness wants to make swapping models trivial. DeepSeek also wrote its answer in
-LaTeX (`\(17 \times 23\)`), a small thing that chapter 4 fixed with a better system prompt.
+Running the loop against real models shows variation that a mock hides. Asked *"What is (17 × 23) + 4?"*,
+one model may call `multiply` and do the `+ 4` itself, while another calls `multiply` and *then* `add`, one
+extra round trip. How much a model relies on its tools varies a lot, which is one reason a harness wants
+swapping models to be trivial. Models also differ in output style (some answer in LaTeX, `\(17 \times
+23\)`), which chapter 4's system prompt addresses.
 
-There was also a lesson about Anthropic's API that would echo through the whole project. Modern Claude
-models return *thinking blocks*, and those must be sent back **unchanged** on the next turn. Our neutral
-`Message` type couldn't represent them, so it got a field called `raw` that holds the provider's original
-content. It worked, and it was a crack in the abstraction from day one. That crack has a name in
-`DECISIONS.md` (D8), and it's still open at the end of the book.
+Anthropic's API adds a constraint that runs through the whole design. Modern Claude models return
+*thinking blocks*, and those must be sent back **unchanged** on the next turn. A neutral `Message` type
+can't represent them, so it gets a field called `raw` that holds the provider's original content. It works,
+and it's a crack in the abstraction from the start. That crack is D8 in `DECISIONS.md`, and it stays open
+to the end of the book.
 
 ## Environment notes
 
-Two small things from this stage are worth keeping. First, `uv` became the only Python tool: `uv sync`,
-`uv run`, `uv add`, never `pip`, with uv managing the interpreter itself
-(`python-preference = "only-managed"`). Second, an early attempt at authentication taught a subtle trap:
-an `ANTHROPIC_API_KEY` in the environment silently overrides an `ant auth login` profile, and the `ant` CLI
+Two practical points. First, `uv` is the only Python tool: `uv sync`, `uv run`, `uv add`, with uv managing
+the interpreter itself (`python-preference = "only-managed"`). Second, an authentication trap: an
+`ANTHROPIC_API_KEY` in the environment silently overrides an `ant auth login` profile, and the `ant` CLI
 counts even an *empty* `ANTHROPIC_API_KEY=` line as "set". (The Python SDK treats an empty value as unset,
 but tools differ, so `.env.example` leaves the line commented out.)
 
@@ -97,4 +96,4 @@ written down, turns every later pattern into an answer instead of a decoration.
 
 - Template Method varies behavior through inheritance. What happens when two independent things need to
   vary, say, the provider *and* the logging?
-- Which of the smells listed in `call_llm`'s docstring would you have noticed without the list?
+- Which of `call_llm`'s smells would you have noticed without the list?

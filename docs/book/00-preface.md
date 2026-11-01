@@ -1,62 +1,57 @@
-# Preface: how this project worked
+# Preface: how this book works
 
-The idea was simple. Reading about design patterns on [refactoring.guru](https://refactoring.guru/design-patterns) explains *what* they are, but not
-what it feels like to *need* one. So instead of studying patterns in the abstract, we built something real,
-a small harness for LLM agents, and let each pattern arrive only when the code started to hurt without it.
+Catalogues of design patterns, like [refactoring.guru](https://refactoring.guru/design-patterns), explain
+*what* each pattern is. They can't show you what it's like to *need* one. This book takes the other route:
+it builds a real system, a small harness for LLM agents, and introduces each pattern only at the point
+where the code stops working well without it.
 
-An agent harness is a good teacher for this, because almost every classic pattern has a natural home in
-it. Swapping model providers is Strategy. Translating between their message formats is Adapter. Tool calls
-you can undo are Command. Permission rules are Chain of Responsibility. Sub-agents are Composite. If you
-work on agentic systems, the patterns stop being textbook diagrams and become answers to problems you've
-already had at work.
+An agent harness suits this, because almost every classic pattern has a natural home in it. Swapping model
+providers is Strategy. Translating between their message formats is Adapter. Tool calls you can undo are
+Command. Permission rules are Chain of Responsibility. Sub-agents are Composite. If you work on agentic
+systems, the patterns stop being textbook diagrams and become answers to problems you already know.
 
-## The rules we followed
+## The method
 
-Four habits shaped every stage. They're worth more than any single pattern.
+Four rules shape every chapter. They matter more than any single pattern.
 
-**1. Naive first, then refactor.** The first version of the provider code was deliberately bad: one
+**1. Naive first, then refactor.** The first version of the provider code is deliberately bad: one
 `call_llm()` function with an `if provider == "openrouter": ... elif provider == "anthropic": ...` ladder,
-SDK clients rebuilt on every call, translation code buried inline. That wasn't laziness. You can't
-appreciate a pattern until you've felt the problem it solves, so the smell came first, and the fix second.
+SDK clients rebuilt on every call, translation code buried inline. You can't appreciate a pattern until
+you've seen the problem it solves, so the problem comes first and the fix second.
 
-**2. Lock down behavior before changing structure.** Before the first refactor, we wrote
-*characterization tests*: tests that pin down exactly what the existing code sends to each API, warts and
-all, using fake SDK clients so they run offline. Then the refactor could change everything about the
-structure, while those assertions guaranteed the payloads didn't change by a single byte (D1).
+**2. Lock down behavior before changing structure.** Before the first refactor come *characterization
+tests*: tests that pin down exactly what the existing code sends to each API, warts and all, using fake
+SDK clients so they run offline. The refactor can then change everything about the structure while those
+assertions guarantee that the payloads don't change by a single byte (D1).
 
 **3. No speculative patterns.** A pattern needs a concrete reason: a second provider, a test that's hard to
-write, a bug a real run exposed. When there was no reason, the pattern waited. Abstract Factory waited
-forever (D14). Learning when *not* to apply a pattern turned out to be one of the most useful lessons.
+write, a failure a real run can produce. Without one, the pattern waits. Abstract Factory waits forever
+(D14). Knowing when *not* to apply a pattern is as useful as knowing how to apply it.
 
-**4. Run it for real.** Every stage ended with a live run against a real model through OpenRouter. The
-tests confirmed the behavior we imagined; the live runs revealed the behavior we had actually built. A
-surprising number of the best design decisions in this book came from a model doing something nobody
-expected. The epilogue lists them.
+**4. Run it for real.** Tests confirm the behavior you designed; running against a real model shows the
+behavior you actually built. Models use tools in ways tests don't anticipate, and several design rules in
+this book exist because of failure modes that only appear with a real model in the loop. The epilogue
+collects them.
 
-## Pair mode, and the decision log
+## Chapters and the design rationale
 
-The project ran in "pair mode": before writing code, the big design questions were asked out loud, with
-two to four concrete options, a code preview of each, and a recommendation. You made those calls. The
-smaller decisions made while implementing were listed afterwards, with their alternatives, so you could
-overturn any of them.
+Each chapter is one stage of the build: the problem that makes a pattern necessary, the options, the
+design the code uses and why, and the trade-offs. Chapters end with **the one thing to remember** and a few
+**questions to think about**.
 
-All of it went into `DECISIONS.md`: 227 numbered entries by the end. Each says what the options were, why
-one won, what it cost, whether it's settled or still open, and when to revisit it. Decisions you made are
-marked "(your call)". The ones found in live runs say so.
-
-This book is the readable version of that log. Where a chapter mentions **D63**, the full entry is there if
-you want every detail.
+Decisions are cited by number (**D63**). Each has a full entry in
+[`DECISIONS.md`](../../DECISIONS.md) with every option considered and what the chosen one costs. The book
+is the readable path through that file.
 
 ## The stack
 
-Python 3.13 (3.12 and up supported), managed entirely by `uv`. The OpenAI SDK pointed at OpenRouter, so
-cheap models like DeepSeek could do most of the live testing, plus the Anthropic SDK, included
-specifically to create the need for an Adapter, because its message format differs from OpenAI's in
-interesting ways. pytest throughout: 342 tests by the end, all running offline in about a second.
+Python 3.13 (3.12 and up supported), managed with `uv`. The OpenAI SDK pointed at OpenRouter, so cheap
+models can be used for live testing, plus the Anthropic SDK, included specifically because its message
+format differs from OpenAI's in ways that require an Adapter. pytest throughout; the whole suite runs
+offline in about a second, using a mock provider and fake SDK clients.
 
-## A note on what went wrong
+## Mistakes are part of the material
 
-This book doesn't hide the mistakes, because they're instructive. A fallback that hid a broken API key. A
-reviewer agent that approved its own rewrite. A shell script that executed the text of a Markdown file.
-And a whole afternoon lost to iCloud quietly evicting files from the repository. Each one taught something
-the successful parts didn't.
+The book keeps the failure modes in, because they teach what the successful designs don't: a fallback
+that hides a broken API key, a reviewer agent that approves its own rewrite, a generator whose cleanup
+never runs. Each one is stated as a general rule you can apply to your own code.
