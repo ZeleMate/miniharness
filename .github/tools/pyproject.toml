@@ -14,3 +14,5 @@ dependencies = [
 [tool.uv]
 package = false
 python-preference = "only-managed"
+# Same 7-day supply-chain cooldown as the app (see the root pyproject.toml).
+exclude-newer = "7 days"

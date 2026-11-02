@@ -1950,3 +1950,31 @@ from `agent.messages` afterwards.
   .../rulesets/{id}` to update). GitHub doesn't read the file; it's the reviewable copy.
 - **Revisit:** renaming a job or changing the test matrix needs the same change in the ruleset, or
   every PR waits on a check that never reports.
+
+### D229. Security baseline: repo settings, review rubric, threat model, cooldown
+**Status:** accepted
+- **Context:** CI already covered lint, types, tests, dependency audits, SAST, secrets and workflow
+  linting (D224 to D228). Missing were the GitHub settings that only exist outside the repo, a
+  written threat model, guidance for AI reviewers, and a delay before new dependency releases are
+  locked.
+- **Repo settings (applied through the API, not in a file):** squash merges only, with the PR title
+  as the commit message; Actions must be pinned to full commit SHAs (already true of every workflow,
+  now enforced by GitHub); Dependabot security updates; immutable releases; CodeQL default setup,
+  free on a public repo, on top of Semgrep. Secret scanning's validity checks and non-provider
+  patterns need GitHub Secret Protection, so they stay off; Gitleaks and push protection cover secrets.
+- **Cooldown:** `exclude-newer = "7 days"` in both `pyproject.toml` files, matching Dependabot's
+  7-day cooldown, so `uv lock` and `uv add` also skip releases too new to have been vetted. uv
+  stores it as a span (`P7D`), so `uv lock --check` stays stable.
+- **Docs:** `docs/THREAT_MODEL.md` maps the harness's trust boundaries (model output and tool output
+  are untrusted) to the OWASP LLM 2026 and Agentic Top 10 risks, with open items: no injection evals
+  yet, and tool arguments aren't validated against their schemas. `SECURITY.md` names those classes
+  as in scope. `REVIEW.md` is the rubric for human and AI review.
+- **Claude Code:** `.claude/settings.json` denies reading `.env` and key files and denies publishing
+  and force-pushing; a PostToolUse hook runs the locked ruff on edited Python files; a read-only
+  `code-reviewer` subagent and a `spec-review` skill apply `REVIEW.md` and check a diff against its
+  spec. `claude-review.yml` posts an advisory AI review on PRs: it is not a required check, runs on
+  `pull_request` only (never `pull_request_target`) and skips forks.
+- **Local hooks:** `.pre-commit-config.yaml` runs Gitleaks, actionlint, zizmor and ruff before each
+  commit, ruff and zizmor from this repo's lockfiles so local and CI versions agree.
+- **Not adopted from the repo template:** its CI (this one is stricter: hash-locked CI tools, a
+  Python matrix, one required check per job) and release automation (nothing is published).
