@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: stage-3-acceptance
+expected_outcome: |
+  Brings the stage 3 commit's tests/test_registry.py into the learn worktree, runs pytest, reports 22 passed and 1 failed, classifies test_only_the_first_colon_splits as a behavior gap (the learner splits on the last colon), cites D15, compares the learner's diff with git diff 769398d 0493e00 -- src/ citing D-entries such as D12 and D16, and does not fix the code unasked.
+# Fixture: this case needs a learn/stage-3 worktree at ../miniharness-stage-3 (from 769398d) holding the
+# stage 3 src/ and examples/ diff applied uncommitted, with create_provider changed to split on the last
+# colon (spec.rpartition(":")). It has no scaffold script yet, so `claude plugin eval` can't run it as is.

@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: miniharness-src
+expected_outcome: |
+  A structured report on src/miniharness with sections for patterns present, smells, anti-patterns and no-pattern calls; each finding cites a real file:line, a book chapter and a D-entry that actually says what is claimed.

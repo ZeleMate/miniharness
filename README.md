@@ -56,6 +56,17 @@ Also see `examples/stream.py` (iterate over a run and stop early), `examples/tea
 reviewer agents through a mediator) and `examples/bridge.py` (every agent type on every provider).
 Summarize a trace with `uv run python -m miniharness.trace run.jsonl --html report.html`.
 
+## Learning with an agent
+
+Three skills in [`.claude/skills/`](.claude/skills) turn the book into exercises. Claude Code picks them
+up automatically; [`AGENTS.md`](AGENTS.md) points other coding agents at the same instructions.
+
+| Skill | Try saying | What it does |
+|---|---|---|
+| `tutor` | "teach me the Decorator chapter" | Socratic walkthrough of one chapter and its code, a quiz, a check of your **Try it** answer, and notes in `PATTERNS.md` in your words |
+| `rebuild` | "let me rebuild stage 7" | Checks out the code before that stage on a local `learn/stage-7` branch, states the problem, hints on request, accepts your work with the stage's original tests, then compares your design with the real one |
+| `pattern-spotter` | "spot patterns in ./src" | Reviews a codebase for patterns, smells, the book's anti-patterns, and where no pattern is needed, citing `file:line`, chapter and D-entry |
+
 ## Roadmap
 
 Only add a pattern once you feel the pain it solves.
