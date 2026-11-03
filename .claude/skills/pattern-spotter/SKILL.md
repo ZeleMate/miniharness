@@ -59,7 +59,13 @@ with one implementation, a wrapper type that implements what it wraps), not the 
 ### 2. Search, then read
 
 Use the search hints to find candidates, then **read every candidate in context** before it becomes a
-finding. A grep hit is a lead, not evidence. In particular:
+finding. A grep hit is a lead, not evidence. Apply data minimization while doing this: read only the
+smallest surrounding region needed to classify the pattern/anti-pattern, and do not copy secrets,
+credentials, tokens, private keys, or personal data into notes or the final report. If evidence contains
+sensitive values, summarize behavior and cite file:line, and redact any unavoidable snippet with
+placeholders (for example `[REDACTED_SECRET]`).
+
+In particular:
 
 - Wrapper-shaped classes are ambiguous; classify them by intent with the "Same structure, different
   intent" table. If name and intent disagree, that's worth reporting.
