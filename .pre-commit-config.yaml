@@ -1,0 +1,43 @@
+# Local git hooks: the fast subset of CI, before every commit.
+# Install once with `uvx pre-commit install` (or `prek install`). Revs are full
+# commit SHAs; ruff and zizmor run from this repo's own lockfiles so local and
+# CI versions match.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: detect-private-key
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e  # frozen: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
+    hooks:
+      - id: actionlint
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --only-group dev ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --only-group dev ruff format
+        language: system
+        types: [python]
+      - id: zizmor
+        name: zizmor
+        entry: uv run --project .github/tools zizmor --offline --no-progress .
+        language: system
+        files: ^\.github/
+        pass_filenames: false

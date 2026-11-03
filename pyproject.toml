@@ -37,6 +37,9 @@ pythonpath = ["src"]  # works even if macOS hides the editable-install .pth
 
 [tool.uv]
 python-preference = "only-managed"  # always use uv-installed Python, never Homebrew's
+# Supply-chain cooldown: ignore releases published in the last 7 days, so a
+# malicious release is usually pulled before it can be locked.
+exclude-newer = "7 days"
 
 [tool.ruff]
 # Ruff's own defaults (line length 88, its default rule set). Target version
