@@ -158,11 +158,17 @@ in their words).
 
 ## Cleanup
 
-Leave the worktree in place unless the learner asks to remove it. When they do:
+Leave the worktree in place unless the learner asks to remove it. If they ask, use a guarded flow:
+
+1. Ask for explicit confirmation (for example: **"Type: DELETE STAGE N"**). Do not run deletion commands
+   until the learner provides that exact confirmation.
+2. Verify targets exist (`git worktree list`, `git branch --list 'learn/stage-N'`).
+3. Remove the worktree, then delete the branch with the non-forcing form first:
 
 ```bash
 git worktree remove ../miniharness-stage-N
-git branch -D learn/stage-N
+git branch -d learn/stage-N
 ```
 
-`-D` discards the attempt for good, so confirm first.
+4. If `git branch -d` fails because the branch is not fully merged, explain why and ask whether to force
+   delete. Only run `git branch -D learn/stage-N` after an explicit yes.
