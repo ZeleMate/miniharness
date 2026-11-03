@@ -48,6 +48,7 @@ Trust boundaries: **model output** (everything a provider returns, including too
 | Risk | Why accepted | Revisit |
 |---|---|---|
 | No second human reviewer | Solo project; AI review and required CI checks are the mitigation | If a second maintainer joins |
+| Claude Code's `Read` deny rules for `.env*` and key files don't stop shell commands (`cat`, `python -c`) from reading them; this also hides `.env.example` from Read | A `Bash(...)` deny list can't cover every way to read a file, so it would only look like a control. Running Claude Code in its sandbox is the real boundary | If Claude Code's sandbox is enabled for this repo |
 | The working directory is sent to the provider and written to traces | Gives the agent useful context; traces are git-ignored | If traces are ever uploaded or shared by default |
 
 ## Open items
