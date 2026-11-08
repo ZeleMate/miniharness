@@ -51,8 +51,8 @@ class AgentState:
         raise RuntimeError(f"Cannot step an agent that is {self.name}")
 
     def iter_step(self, agent: "Agent") -> "StepGenerator":
+        yield from ()  # yields nothing, but makes this a generator
         return self.step(agent)
-        yield  # unreachable, but makes this a generator
 
     def snapshot(self) -> dict[str, Any]:
         """JSON-safe data needed to rebuild this state (see from_snapshot)."""
