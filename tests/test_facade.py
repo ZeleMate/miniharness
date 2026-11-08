@@ -176,7 +176,7 @@ def test_file_tools_only_come_with_a_workspace(tmp_path):
 
 
 def test_a_cache_inside_the_workspace_is_rejected(tmp_path):
-    # The agent could write a pickle there that runs on a later cache hit (D214)
+    # The agent could forge a model response there for a later cache hit (D214, D231)
     with pytest.raises(ValueError, match="inside the workspace"):
         harness([], workspace=tmp_path, cache=tmp_path / "cache")
     assert not (tmp_path / "cache").exists()  # rejected before anything is created

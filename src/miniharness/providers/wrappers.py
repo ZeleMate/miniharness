@@ -20,9 +20,8 @@ default would have silently skipped the budget.
 
 import hashlib
 import json
-import pickle
 from collections.abc import Iterator
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import anthropic
@@ -40,6 +39,8 @@ from miniharness.types import (
     TextDelta,
     ToolSpec,
     Usage,
+    message_from_dict,
+    message_to_dict,
 )
 
 
@@ -194,7 +195,8 @@ class Retry(_Wrapper):
 class DiskCache(_Wrapper):
     """Replays stored responses for identical requests. For development only.
 
-    Uses pickle, which can run code on load: only point it at a directory
+    Stored as JSON, so loading a file can't run code. A hit is still trusted as
+    if the model had said it, tool calls included: only point it at a directory
     you control.
     """
 
@@ -208,7 +210,7 @@ class DiskCache(_Wrapper):
     def complete(
         self, messages: list[Message], tools: dict[str, ToolSpec]
     ) -> LLMResponse:
-        file = self.path / f"{self.key(messages, tools)}.pkl"
+        file = self.path / f"{self.key(messages, tools)}.json"
         if file.exists():
             self.hits += 1
             return _load(file)
@@ -220,7 +222,7 @@ class DiskCache(_Wrapper):
     def stream(
         self, messages: list[Message], tools: dict[str, ToolSpec]
     ) -> Iterator[StreamChunk]:
-        file = self.path / f"{self.key(messages, tools)}.pkl"
+        file = self.path / f"{self.key(messages, tools)}.json"
         if file.exists():
             self.hits += 1
             yield from as_stream(_load(file))  # a hit replays all at once
@@ -258,18 +260,26 @@ class DiskCache(_Wrapper):
         return hashlib.sha256(blob.encode()).hexdigest()
 
 
-# The only pickle in the codebase, accepted for a dev-only cache in a directory the
-# caller controls (DECISIONS.md D51, and the review's fix that keeps it out of the
-# workspace). Semgrep's avoid-pickle rule is silenced here and nowhere else.
 def _load(file: Path) -> LLMResponse:
-    # nosemgrep: python.lang.security.deserialization.pickle.avoid-pickle
-    return pickle.loads(file.read_bytes())
+    data = json.loads(file.read_text(encoding="utf-8"))
+    usage = data["usage"]
+    return LLMResponse(
+        message_from_dict(data["message"]),
+        data["stop_reason"],
+        None if usage is None else Usage(**usage),
+    )
 
 
 def _store(file: Path, response: LLMResponse) -> None:
+    blob = json.dumps(
+        {
+            "message": message_to_dict(response.message),
+            "stop_reason": response.stop_reason,
+            "usage": None if response.usage is None else asdict(response.usage),
+        }
+    )
     file.parent.mkdir(parents=True, exist_ok=True)
-    # nosemgrep: python.lang.security.deserialization.pickle.avoid-pickle
-    file.write_bytes(pickle.dumps(response))
+    file.write_text(blob, encoding="utf-8")
 
 
 def _innermost(provider: Provider) -> Provider:
