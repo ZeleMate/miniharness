@@ -3,7 +3,8 @@
 # Hardening: no secrets, no token permissions beyond reading the repo, every
 # action pinned to a full commit SHA, uv pinned by version and checksum, Python
 # tools installed from lockfiles with hashes (the CI tools from .github/tools,
-# locked apart from the app), and the Go tools fetched from their releases with
+# locked apart from the app), `uv run --no-build` so no dependency's setup code runs
+# (only this project is built), and the Go tools fetched from their releases with
 # pinned SHA-256 digests (.github/actions/fetch-binary). Every job is a required
 # check on main (.github/rulesets/main.json): renaming a job or changing the test
 # matrix means updating the ruleset too, or PRs wait forever on the old name.
@@ -42,8 +43,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - run: uv run --only-group dev ruff check --output-format=github .
-      - run: uv run --only-group dev ruff format --check --diff .
+      - run: uv run --no-build --only-group dev ruff check --output-format=github .
+      - run: uv run --no-build --only-group dev ruff format --check --diff .
 
   typecheck:
     runs-on: ubuntu-24.04
@@ -55,7 +56,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
-      - run: uv run mypy
+      - run: uv run --no-build mypy
 
   test:
     runs-on: ubuntu-24.04
@@ -75,7 +76,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       # Coverage threshold: fail_under in pyproject.toml.
-      - run: uv run pytest --cov --cov-report=term
+      - run: uv run --no-build pytest --cov --cov-report=term
 
   deps:
     runs-on: ubuntu-24.04
@@ -94,7 +95,7 @@ jobs:
       - name: Known vulnerabilities in the app and dev dependencies (no exceptions)
         run: |
           uv export --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/app.txt"
-          uv run --project .github/tools pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/app.txt"
+          uv run --no-build --project .github/tools pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/app.txt"
       # The CI tools only. Semgrep pins mcp and opentelemetry-api exactly, so these
       # can't be upgraded until it does. All are in code `semgrep scan` never runs:
       # MCP's HTTP server, server auth and client, and tracestate parsing. Remove
@@ -102,7 +103,7 @@ jobs:
       - name: Known vulnerabilities in the CI tools
         run: |
           uv export --project .github/tools --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/tools.txt"
-          uv run --project .github/tools pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/tools.txt" \
+          uv run --no-build --project .github/tools pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/tools.txt" \
             --ignore-vuln CVE-2026-59951 \
             --ignore-vuln CVE-2026-114603 \
             --ignore-vuln CVE-2026-116684 \
@@ -127,7 +128,7 @@ jobs:
           # Eio's portable backend avoids it.
           EIO_BACKEND: posix
         run: >-
-          uv run --project .github/tools semgrep scan
+          uv run --no-build --project .github/tools semgrep scan
           --config p/python --config p/security-audit --config p/secrets
           --metrics=off --disable-version-check --error .
 
@@ -183,4 +184,4 @@ jobs:
       # actionlint also runs shellcheck on `run:` scripts (preinstalled on the runner).
       - run: actionlint
       # Workflows, the composite actions and dependabot.yml; config in .github/zizmor.yml.
-      - run: uv run --project .github/tools zizmor --offline --no-progress .
+      - run: uv run --no-build --project .github/tools zizmor --offline --no-progress .

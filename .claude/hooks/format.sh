@@ -5,7 +5,7 @@ set -uo pipefail
 
 command -v jq >/dev/null 2>&1 || exit 0
 file=$(jq -r '.tool_input.file_path // empty')
-[ -n "$file" ] && [ -f "$file" ] || exit 0
+[[ -n "$file" && -f "$file" ]] || exit 0
 
 case "$file" in
   *.py)

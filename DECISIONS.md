@@ -396,7 +396,7 @@ passes `client=` through as a kwarg, so tests still inject fakes.
 - Bad tool-call JSON isn't a rate problem, so an immediate retry is fine and no sleep is needed.
 
 ### D51. Cache key: namespace + model + tools + neutral messages; `raw` excluded; pickle storage
-**Status:** accepted
+**Status:** accepted; the pickle storage is superseded by D231
 - **What's in the key:** anything that could change the answer. **What's left out:**
   `raw`, which is provider-specific and derived from the rest. If it were included, the
   same conversation could hash differently.
@@ -1978,3 +1978,28 @@ from `agent.messages` afterwards.
   commit, ruff and zizmor from this repo's lockfiles so local and CI versions agree.
 - **Not adopted from the repo template:** its CI (this one is stricter: hash-locked CI tools, a
   Python matrix, one required check per job) and release automation (nothing is published).
+
+### D230. SonarQube Cloud findings on `main`: ten fixed, two left
+**Status:** accepted
+- **Fixed:** `uv run --no-build` everywhere in `ci.yml` (S8541), so a dependency that only ships an
+  sdist fails the job instead of running its setup code. Every locked dependency has wheels. uv still
+  builds this project, whose code is in the repo anyway. `[[ ]]` in the format hook (S7688). The default
+  `AgentState.iter_step` uses `yield from ()` instead of an unreachable `yield` (S1763). Pickle in
+  `DiskCache` (S5135), see D231.
+- **Left, false positive:** S8707 on `trace.main` and `load_trace`. The paths are this CLI's own
+  arguments, given by the person running it with their own permissions. There is no shell tool, so a
+  model can't supply them (D214), and restricting them would break `--html /some/path`.
+
+### D231. `DiskCache` stores JSON, not pickle
+**Status:** accepted
+- **Context:** D51 chose pickle so the cache could hold Anthropic's SDK objects. D214 kept it because
+  JSON would need a serializer for every response type. Checkpoints already serialize `Message`, `raw`
+  included, and replay it, so that cost is gone. `LLMResponse` adds only `stop_reason` and `Usage`.
+- **Chosen:** one JSON file per request, through the same functions, which moved to `types.py` so the
+  providers don't import the checkpoint module and the tools behind it. Loading a file can no longer
+  run code, and the last Semgrep suppression for pickle goes with it.
+- **Costs:** a hit returns `raw` as plain dicts rather than SDK objects, as a restored checkpoint does.
+  Existing `.pkl` files are never opened: each request misses once and the old files stay until
+  deleted.
+- **Still in place:** `Harness` rejects a cache inside the workspace (D214). A planted file can't run
+  code now, but it can still forge a model response, tool calls included.

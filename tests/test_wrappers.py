@@ -1,6 +1,8 @@
+import json
 from types import SimpleNamespace as NS
 
 import pytest
+from anthropic.types import TextBlock
 
 from miniharness import Agent, LLMResponse, Message
 from miniharness.errors import BudgetExceeded, MalformedResponseError
@@ -14,7 +16,7 @@ from miniharness.providers import (
     Retry,
     UsageTracker,
 )
-from miniharness.types import Usage
+from miniharness.types import ToolCall, Usage
 
 HI = [Message(role="user", content="hi")]
 
@@ -160,6 +162,45 @@ def test_cache_survives_a_new_instance(tmp_path):
     again = DiskCache(MockProvider([]), tmp_path)
 
     assert again.complete(HI, {}).message.content == "stored"
+
+
+def test_cache_round_trips_a_whole_response_as_json(tmp_path):
+    original = LLMResponse(
+        Message(
+            role="assistant",
+            content="adding",
+            tool_calls=[ToolCall("c1", "add", {"a": 1})],
+            raw=[TextBlock(type="text", text="adding")],
+        ),
+        "tool_calls",
+        Usage(10, 5, cost_usd=0.01),
+    )
+    DiskCache(MockProvider([original]), tmp_path).complete(HI, {})
+
+    hit = DiskCache(MockProvider([]), tmp_path).complete(HI, {})
+
+    assert json.loads(next(tmp_path.iterdir()).read_text(encoding="utf-8"))
+    assert hit.stop_reason == "tool_calls"
+    assert hit.usage == original.usage
+    assert hit.message.tool_calls == original.message.tool_calls
+    # Plain dicts, as with checkpoints: the Anthropic API takes them back
+    assert hit.message.raw == [{"type": "text", "text": "adding"}]
+
+
+def test_cache_keeps_a_missing_usage_missing(tmp_path):
+    response = LLMResponse(Message(role="assistant", content="ok"), "end")
+    DiskCache(MockProvider([response]), tmp_path).complete(HI, {})
+
+    assert DiskCache(MockProvider([]), tmp_path).complete(HI, {}).usage is None
+
+
+def test_cache_never_opens_an_old_pickle(tmp_path):
+    mock = MockProvider([reply("fresh")])
+    cache = DiskCache(mock, tmp_path)
+    (tmp_path / f"{cache.key(HI, {})}.pkl").write_bytes(b"not read")
+
+    assert cache.complete(HI, {}).message.content == "fresh"
+    assert (cache.hits, cache.misses) == (0, 1)
 
 
 def test_cache_key_covers_model_messages_and_tools(tmp_path):

@@ -77,7 +77,7 @@ class Harness:
         """Every argument has a safe default; only `model` is usually worth setting.
 
         - `budget`: USD limit for this harness (None: no limit). Unknown cost fails closed (D48).
-        - `cache`: True for `.cache/llm`, or a directory. Development only (pickle).
+        - `cache`: True for `.cache/llm`, or a directory. Development only (a hit is trusted, D231).
         - `workspace`: file tools are added only when one is given, sandboxed to it.
         - `approve`: tools with side effects are denied unless this is True or a callback (D176).
         - `policies`: extra policies checked before the default read-only/ask chain.
@@ -267,12 +267,13 @@ class Harness:
 
 
 def _check_cache_outside(cache_dir: Path, workspace: Path) -> None:
-    # The cache is unpickled on a hit, so an agent that could write into it could
-    # plant code that runs on a later run (D214). resolve() also catches symlinks.
+    # A hit is trusted, so an agent that could write into the cache could forge a
+    # later model response, tool calls included (D214, D231). resolve() also catches
+    # symlinks.
     if cache_dir.resolve().is_relative_to(workspace.resolve()):
         raise ValueError(
             f"The cache {str(cache_dir)!r} is inside the workspace {str(workspace)!r}: the agent's file tools "
-            "could write a pickle that runs on load. Put the cache outside the workspace."
+            "could forge a cached model response. Put the cache outside the workspace."
         )
 
 
