@@ -1978,3 +1978,16 @@ from `agent.messages` afterwards.
   commit, ruff and zizmor from this repo's lockfiles so local and CI versions agree.
 - **Not adopted from the repo template:** its CI (this one is stricter: hash-locked CI tools, a
   Python matrix, one required check per job) and release automation (nothing is published).
+
+### D230. SonarQube Cloud findings on `main`: nine fixed, three left
+**Status:** proposed
+- **Fixed:** `uv run --no-build` everywhere in `ci.yml` (S8541), so a dependency that only ships an
+  sdist fails the job instead of running its setup code. Every locked dependency has wheels. uv still
+  builds this project, whose code is in the repo anyway. `[[ ]]` in the format hook (S7688). The default
+  `AgentState.iter_step` uses `yield from ()` instead of an unreachable `yield` (S1763).
+- **Left, a design call:** S5135 on `DiskCache._load`. D51 and D214 accept pickle while the cache is
+  development-only, and D214 rejected JSON because every response type would need a serializer.
+  `checkpoint.py` already has one for `Message`, so that cost is now small if this is revisited.
+- **Left, false positive:** S8707 on `trace.main` and `load_trace`. The paths are this CLI's own
+  arguments, given by the person running it with their own permissions. There is no shell tool, so a
+  model can't supply them (D214), and restricting them would break `--html /some/path`.
