@@ -24,3 +24,4 @@ request matches.
 - `rebuild` never pushes and never modifies `main`; learner work stays on local `learn/*` branches.
 - Docs are written in a neutral, objective voice: patterns, trade-offs and evidence, not personal stories.
 - CI requires GitHub `noreply` commit emails and rejects absolute home-directory paths in tracked files.
+- The repo baseline comes from `ZeleMate/repo-template` (`.copier-answers.yml`; update with `uvx copier update --trust`). The template owns `ci.yml`, `security.yml` and `release.yml`; this repo's own CI jobs are in `.github/workflows/ci-local.yml`. PR titles are Conventional Commits: release-please builds `CHANGELOG.md` and releases from them.
