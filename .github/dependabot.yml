@@ -1,25 +1,50 @@
-# Dependabot version updates. The 7-day cooldown skips releases young enough to
-# still be pulled if they turn out malicious; security updates ignore it.
 version: 2
 updates:
-  # The app's pyproject.toml and uv.lock, and the CI tools' own lock.
+  # Copier for template-update.yml (.github/tools/uv.lock), locked apart from the app.
   - package-ecosystem: uv
-    directories: ["/", "/.github/tools"]
+    directory: /.github/tools
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
     groups:
-      minor-and-patch:
-        update-types: [minor, patch]
+      ci-tools:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
 
   - package-ecosystem: github-actions
     # The root covers .github/workflows; the composite actions are listed too.
     directories: ["/", "/.github/actions/*"]
     schedule:
       interval: weekly
+    # Third-party actions wait 7 days. The central workflows are our own, so they don't.
     cooldown:
       default-days: 7
+      exclude: ["ZeleMate/workflows*"]
     groups:
+      # Apart from `actions`, so a red central bump doesn't block unrelated updates.
+      central-workflows:
+        patterns: ["ZeleMate/workflows*"]
       actions:
         patterns: ["*"]
+        exclude-patterns: ["ZeleMate/workflows*"]
+    ignore:
+      # A major central release needs caller edits, so it arrives with a template update.
+      - dependency-name: "ZeleMate/workflows*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: deps

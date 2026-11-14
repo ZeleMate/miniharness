@@ -1,0 +1,36 @@
+# OSV-Scanner's accept list for the CI tool lock next to this file (the central
+# security workflow scans every lockfile). Semgrep pins mcp and opentelemetry-api
+# exactly, so they can't move until Semgrep does, and none of the flagged code runs:
+# CI only runs `semgrep scan`, never Semgrep's MCP server, and nothing in this lock
+# is shipped. Same advisories as ci-local.yml's pip-audit ignores (DECISIONS.md D226,
+# D227). Each entry expires, so the scan fails again and the ignore gets re-checked.
+
+[[IgnoredVulns]]
+id = "GHSA-5h93-6whr-6q8j"
+ignoreUntil = 2027-02-10
+reason = "mcp 1.29.0 is pinned by Semgrep; its MCP server is never run in CI"
+
+[[IgnoredVulns]]
+id = "GHSA-84m7-p3x7-pcfv"
+ignoreUntil = 2027-02-10
+reason = "mcp 1.29.0 is pinned by Semgrep; its MCP server is never run in CI"
+
+[[IgnoredVulns]]
+id = "GHSA-rwrf-2pqf-9j8j"
+ignoreUntil = 2027-02-10
+reason = "mcp 1.29.0 is pinned by Semgrep; its MCP server is never run in CI"
+
+[[IgnoredVulns]]
+id = "GHSA-w4fh-qvv9-3v23"
+ignoreUntil = 2027-02-10
+reason = "mcp 1.29.0 is pinned by Semgrep; its MCP server is never run in CI"
+
+[[IgnoredVulns]]
+id = "GHSA-xcq7-p3pf-p88h"
+ignoreUntil = 2027-02-10
+reason = "opentelemetry-api 1.37 is pinned by Semgrep; used only for its own telemetry, which runs with --metrics off"
+
+[[IgnoredVulns]]
+id = "GHSA-mf5v-w3w3-f6cg"
+ignoreUntil = 2027-02-10
+reason = "opentelemetry-api 1.37 is pinned by Semgrep; the ReDoS is in traceparent extraction from untrusted carriers, which semgrep scan never does"

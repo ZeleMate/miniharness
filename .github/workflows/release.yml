@@ -1,0 +1,62 @@
+name: Release
+
+# release-please keeps a release PR open from Conventional Commit titles; merging it tags and releases.
+# PRs opened with GITHUB_TOKEN do not trigger CI, so the release PR's ci-ok check never runs.
+# Fix: add a RELEASE_PLEASE_TOKEN secret (fine-grained PAT: contents + pull requests read/write on this repo).
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    outputs:
+      any: ${{ steps.rp.outputs.releases_created }}
+      python: ${{ steps.rp.outputs['release_created'] }}
+      python_tag: ${{ steps.rp.outputs['tag_name'] }}
+    steps:
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
+        id: rp
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  sbom:
+    needs: release-please
+    if: needs.release-please.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c  # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Attach SBOM to the new release(s)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAGS: >-
+            ${{ needs.release-please.outputs.python_tag }}
+        run: |
+          for tag in $TAGS; do
+            gh release upload "$tag" sbom.spdx.json --clobber --repo "$GITHUB_REPOSITORY"
+          done
