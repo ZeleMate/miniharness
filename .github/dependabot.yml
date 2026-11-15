@@ -10,6 +10,12 @@ updates:
     groups:
       ci-tools:
         patterns: ["*"]
+    # semgrep==1.181.0 pins these (opentelemetry-* ~=1.37.0 / ~=0.58b0, mcp==1.29.0), so no
+    # update resolves and every security job fails. Their CVEs are accepted in ci-local.yml's
+    # CI-tools audit (DECISIONS.md D226, D227). A Semgrep bump re-locks them; drop this then.
+    ignore:
+      - dependency-name: "opentelemetry-*"
+      - dependency-name: "mcp"
     commit-message:
       prefix: ci
 
