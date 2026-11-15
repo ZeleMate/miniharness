@@ -59,7 +59,7 @@ workspace/
 /*.json
 /*.html
 
-# Keep last: template files the patterns above would otherwise hide.
+# Keep last: template files that broad rules above (`.python-version`, `/*.json`) must not hide.
 !/release-please-config.json
 !/.release-please-manifest.json
 !.github/tools/.python-version

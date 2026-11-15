@@ -1,6 +1,6 @@
 # Review rubric
 
-Used by AI reviewers (the Claude review workflow, the `code-reviewer` subagent) and for self-review. Ruff, mypy, the 95% coverage gate, Semgrep, pip-audit, Gitleaks, actionlint and zizmor already run in CI; do not comment on what they enforce.
+Used by AI reviewers (the Claude review workflow, the `/code-reviewer` skill) and for self-review. Ruff, mypy, the 95% coverage gate, Semgrep, pip-audit, Gitleaks, actionlint and zizmor already run in CI; do not comment on what they enforce.
 
 Report only findings you can point to in the diff, with a concrete suggested change. Say "no findings" when there are none.
 
