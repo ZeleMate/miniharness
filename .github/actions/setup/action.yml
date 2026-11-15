@@ -10,7 +10,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+    - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       with:
         # Bump both together; the digest is the release's
         # uv-x86_64-unknown-linux-gnu.tar.gz.sha256.
