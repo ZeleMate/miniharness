@@ -1,0 +1,106 @@
+name: Local CI
+
+# miniharness's own CI jobs. The template wrote this file once and never updates it.
+# ci.yml calls it on every PR and push, and the merge gate (ci-ok) waits for it.
+# These are the jobs from the old ci.yml that the central workflows don't cover; lint,
+# type check and tests run in the central python.yml, Gitleaks in the central
+# security.yml, actionlint and zizmor as pre-commit hooks in the central repo-lint.
+#
+# Hardening as before: no secrets, read-only token, actions pinned to full SHAs, uv
+# pinned by version and checksum (.github/actions/setup), Python tools from hash-locked
+# lockfiles, and `uv run --no-build` so no dependency's setup code runs.
+on:
+  workflow_call:
+
+permissions: {}
+
+env:
+  # Fail instead of silently re-locking when pyproject.toml and uv.lock disagree.
+  UV_LOCKED: "1"
+  FORCE_COLOR: "1"
+
+jobs:
+  deps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Lockfiles match their pyproject.toml
+        run: |
+          uv lock --check
+          uv lock --check --project .github/tools
+      - name: Known vulnerabilities in the app and dev dependencies (no exceptions)
+        run: |
+          uv export --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/app.txt"
+          uv run --no-build --project .github/tools pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/app.txt"
+      # The CI tools only. Semgrep pins mcp and opentelemetry-api exactly, so these
+      # can't be upgraded until it does. All are in code `semgrep scan` never runs:
+      # MCP's HTTP server, server auth and client, and tracestate and traceparent
+      # parsing (CVE-2026-126360: a ReDoS on untrusted trace headers). Remove
+      # each ignore once a Semgrep bump lets the fixed version in (DECISIONS.md D226, D227).
+      - name: Known vulnerabilities in the CI tools
+        run: |
+          uv export --project .github/tools --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/tools.txt"
+          uv run --no-build --project .github/tools pip-audit --strict --disable-pip --require-hashes -r "$RUNNER_TEMP/tools.txt" \
+            --ignore-vuln CVE-2026-59951 \
+            --ignore-vuln CVE-2026-114603 \
+            --ignore-vuln CVE-2026-116684 \
+            --ignore-vuln CVE-2026-116685 \
+            --ignore-vuln CVE-2026-116686 \
+            --ignore-vuln CVE-2026-126360
+
+  sast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # Semgrep CE with registry rulesets: no account, no token, no metrics.
+      # The rulesets aren't versioned, so the Monday run picks up new rules.
+      # Suppress a finding inline with `# nosemgrep: <rule-id>` and a reason.
+      - env:
+          # semgrep-core segfaulted in its io_uring backend on ubuntu-24.04;
+          # Eio's portable backend avoids it.
+          EIO_BACKEND: posix
+        run: >-
+          uv run --no-build --project .github/tools semgrep scan
+          --config p/python --config p/security-audit --config p/secrets
+          --metrics=off --disable-version-check --error .
+
+  personal-data:
+    name: personal data (noreply emails, home paths)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The full history of every branch, not just the tip.
+          fetch-depth: 0
+      # Personal data gitleaks doesn't look for. Prints commit hashes and file
+      # lines, never the offending email, so the log doesn't repeat the leak.
+      - name: Commits use GitHub noreply identities
+        run: |
+          bad=$(git log --all --format='%h %ae %ce' \
+            | awk '{ for (i = 2; i <= 3; i++) if ($i !~ /@users\.noreply\.github\.com$/ && $i != "noreply@github.com") { print $1; break } }')
+          if [ -n "$bad" ]; then
+            echo "::error::Commits with a non-noreply author or committer email: $bad"
+            exit 1
+          fi
+      - name: No absolute home paths in tracked files
+        run: |
+          if git grep -nIE '/(Users|home)/[A-Za-z0-9._-]+/'; then
+            echo "::error::Tracked files contain a home directory path"
+            exit 1
+          fi

@@ -1,0 +1,24 @@
+# Changes here will be overwritten by Copier. Do not edit by hand; run `copier update`.
+_commit: v0.6.0
+_src_path: gh:ZeleMate/repo-template
+agentic: false
+ai_reviewers:
+- claude
+author_email: 179591691+ZeleMate@users.noreply.github.com
+author_name: Zelenyiánszki Máté
+description: A tiny agent harness built from scratch to learn design patterns
+extra_ecosystems: []
+github_owner: ZeleMate
+github_plan: free
+languages:
+- python
+license: MIT
+package_name: miniharness
+project_name: miniharness
+project_slug: miniharness
+publishes: false
+python_type_checker: mypy
+python_version: '3.12'
+quality_platform: sonarqube-cloud
+sonar_organization: zelemate
+visibility: public
