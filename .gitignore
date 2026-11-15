@@ -58,3 +58,8 @@ workspace/
 *.jsonl
 /*.json
 /*.html
+
+# Keep last: template files the patterns above would otherwise hide.
+!/release-please-config.json
+!/.release-please-manifest.json
+!.github/tools/.python-version
