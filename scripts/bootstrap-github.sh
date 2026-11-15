@@ -118,6 +118,16 @@ JSON
   fi
 fi
 
+# ------------------------------------------------------------------ secrets
+say "Secrets the workflows need"
+if [ "$DRY_RUN" = 1 ]; then
+  printf '  [dry-run] check that RELEASE_PLEASE_TOKEN is set\n'
+elif gh secret list --repo "$FULL" --json name --jq '.[].name' 2>/dev/null | grep -qx RELEASE_PLEASE_TOKEN; then
+  ok "RELEASE_PLEASE_TOKEN is set"
+else
+  warn "RELEASE_PLEASE_TOKEN is not set: release.yml fails on every push to main until it is (see the manual steps)"
+fi
+
 # ------------------------------------------------------------------ manual steps
 say "Done. Remaining manual steps (also in docs/SETUP.md):"
 sed -n '/^## Manual steps/,$p' docs/SETUP.md | tail -n +2

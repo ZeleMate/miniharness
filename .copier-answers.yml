@@ -1,5 +1,5 @@
 # Changes here will be overwritten by Copier. Do not edit by hand; run `copier update`.
-_commit: v0.6.0
+_commit: v1.0.0
 _src_path: gh:ZeleMate/repo-template
 agentic: false
 ai_reviewers:
@@ -17,8 +17,10 @@ package_name: miniharness
 project_name: miniharness
 project_slug: miniharness
 publishes: false
+python_max_version: ''
 python_type_checker: mypy
 python_version: '3.12'
 quality_platform: sonarqube-cloud
+repo_name: miniharness
 sonar_organization: zelemate
 visibility: public

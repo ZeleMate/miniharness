@@ -26,7 +26,7 @@ jobs:
     permissions:
       contents: read
     with:
-      # Every supported minor version, from requires-python up.
+      # Every supported minor version: python_version up to python_max_version (or the newest).
       python-versions: '["3.12", "3.13", "3.14"]'
       type-checker: mypy
       working-directory: .
