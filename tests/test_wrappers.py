@@ -438,8 +438,8 @@ def test_default_errors_are_transient_only():
 
 
 def test_an_overloaded_anthropic_api_is_transient():
-    # 529 has its own class in the Anthropic SDK; it's not an InternalServerError
+    # 529 has its own class in the Anthropic SDK. Before anthropic 2.6 it wasn't an
+    # InternalServerError, so the transient list names it explicitly either way.
     import anthropic
 
-    assert not issubclass(anthropic.OverloadedError, anthropic.InternalServerError)
     assert issubclass(anthropic.OverloadedError, FallbackChain([MockProvider()]).on)
