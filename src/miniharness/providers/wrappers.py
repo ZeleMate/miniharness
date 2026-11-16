@@ -302,7 +302,7 @@ def transient_errors() -> tuple[type[Exception], ...]:
         anthropic.APIConnectionError,  # includes timeouts
         anthropic.RateLimitError,
         anthropic.InternalServerError,  # 5xx
-        anthropic.OverloadedError,  # 529: its own class, not a subclass of InternalServerError
+        anthropic.OverloadedError,  # 529: not an InternalServerError before anthropic 2.6
         openai.APIConnectionError,
         openai.RateLimitError,
         openai.InternalServerError,
