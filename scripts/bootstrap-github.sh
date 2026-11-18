@@ -119,13 +119,53 @@ JSON
 fi
 
 # ------------------------------------------------------------------ secrets
+# The Actions secrets in this repo's secret requirements (.github/secret-requirements.json).
+# Prints true, false or unknown: is the template repo (_src_path in the answers file) private?
+template_private() {
+  local tpl p
+  tpl=$(sed -n 's/^_src_path: *//p' .copier-answers.yml 2>/dev/null | head -n 1 \
+    | sed -E -e "s/^['\"]//" -e "s/['\"]\$//" -e 's#^gh:##' -e 's#^(https://|git@)github\.com[:/]##' -e 's#\.git$##')
+  if printf '%s' "$tpl" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'; then
+    p=$(gh api "repos/$tpl" --jq .private 2>/dev/null || true)
+    case "$p" in true|false) echo "$p"; return ;; esac
+  fi
+  echo unknown
+}
 say "Secrets the workflows need"
 if [ "$DRY_RUN" = 1 ]; then
+  printf '  [dry-run] check that CLAUDE_CODE_OAUTH_TOKEN is set\n'
   printf '  [dry-run] check that RELEASE_PLEASE_TOKEN is set\n'
-elif gh secret list --repo "$FULL" --json name --jq '.[].name' 2>/dev/null | grep -qx RELEASE_PLEASE_TOKEN; then
-  ok "RELEASE_PLEASE_TOKEN is set"
+  printf '  [dry-run] check that TEMPLATE_READ_TOKEN is set\n'
 else
-  warn "RELEASE_PLEASE_TOKEN is not set: release.yml fails on every push to main until it is (see the manual steps)"
+  SECRETS_SET=$(gh secret list --repo "$FULL" --json name --jq '.[].name' 2>/dev/null || true)
+  # Needed only while .github/workflows/claude-review.yml is in the repo.
+  if [ ! -e ".github/workflows/claude-review.yml" ]; then
+    ok "CLAUDE_CODE_OAUTH_TOKEN is not needed: .github/workflows/claude-review.yml isn't in this repo"
+  elif grep -qx CLAUDE_CODE_OAUTH_TOKEN <<<"$SECRETS_SET"; then
+    ok "CLAUDE_CODE_OAUTH_TOKEN is set"
+  else
+    warn "CLAUDE_CODE_OAUTH_TOKEN is not set: the Claude review job passes with a warning and reviews nothing until it is (see the manual steps)"
+  fi
+  # Needed only while .github/workflows/release.yml is in the repo.
+  if [ ! -e ".github/workflows/release.yml" ]; then
+    ok "RELEASE_PLEASE_TOKEN is not needed: .github/workflows/release.yml isn't in this repo"
+  elif [ "$(gh api "repos/$FULL/actions/workflows/release.yml" --jq .state 2>/dev/null || true)" = disabled_manually ]; then
+    ok "RELEASE_PLEASE_TOKEN is not needed: release.yml is disabled (re-enable with: gh workflow enable release.yml)"
+  elif grep -qx RELEASE_PLEASE_TOKEN <<<"$SECRETS_SET"; then
+    ok "RELEASE_PLEASE_TOKEN is set"
+  else
+    warn "RELEASE_PLEASE_TOKEN is not set (not needed while release.yml is disabled): release.yml fails on every push to main until it is (see the manual steps)"
+  fi
+  # Needed only while .github/workflows/template-update.yml is in the repo.
+  if [ ! -e ".github/workflows/template-update.yml" ]; then
+    ok "TEMPLATE_READ_TOKEN is not needed: .github/workflows/template-update.yml isn't in this repo"
+  elif [ "$(template_private)" = false ]; then
+    ok "TEMPLATE_READ_TOKEN is not needed: the template repo is public"
+  elif grep -qx TEMPLATE_READ_TOKEN <<<"$SECRETS_SET"; then
+    ok "TEMPLATE_READ_TOKEN is set"
+  else
+    warn "TEMPLATE_READ_TOKEN is not set (only if the template repo is private): the weekly template update check fails until it is (see the manual steps)"
+  fi
 fi
 
 # ------------------------------------------------------------------ manual steps
