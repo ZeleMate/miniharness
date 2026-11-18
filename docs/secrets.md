@@ -7,8 +7,11 @@ Following the OWASP Secrets Management Cheat Sheet: centralise, prefer short-liv
 | Secret | Store | Used by | Rotation |
 |---|---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | GitHub Actions secret | `claude-review.yml` | yearly (the token expires after 1 year) or on leak |
-| `SONARQUBE_TOKEN` | Local environment (keychain), never in the repo | `.mcp.json` (SonarQube MCP server) | yearly |
-| `RELEASE_PLEASE_TOKEN` (optional) | GitHub Actions secret | `release.yml` | fine-grained PAT, ≤ 1 year |
+| `SONARQUBE_TOKEN` | Local environment (keychain), never in the repo | `.mcp.json` | yearly |
+| `RELEASE_PLEASE_TOKEN` (not needed while `release.yml` is disabled) | GitHub Actions secret | `release.yml` | fine-grained PAT, ≤ 1 year |
+| `TEMPLATE_READ_TOKEN` (only if the template repo is private) | GitHub Actions secret | `template-update.yml` | fine-grained PAT, contents:read on the template repo, ≤ 1 year |
+
+The machine-readable list is `.github/secret-requirements.json`; the GitHub audit reads it.
 
 Publishing to package registries uses **OIDC trusted publishing**: no stored registry tokens.
 
