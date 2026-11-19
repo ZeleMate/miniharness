@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/ZeleMate/miniharness/compare/v0.1.1...v0.1.2) (2026-11-19)
+
+
+### Dependencies
+
+* bump the python-minor-patch group across 1 directory with 5 updates ([#13](https://github.com/ZeleMate/miniharness/issues/13)) ([4ac5e3f](https://github.com/ZeleMate/miniharness/commit/4ac5e3fe6301e8cf2d7399f598c1422f803d665e))
+* bump the python-minor-patch group with 2 updates ([#23](https://github.com/ZeleMate/miniharness/issues/23)) ([6b58ef1](https://github.com/ZeleMate/miniharness/commit/6b58ef1698247b4018575d2eeed2c1342b763366))
+
 ## [0.1.1](https://github.com/ZeleMate/miniharness/compare/v0.1.0...v0.1.1) (2026-11-15)
 
 
