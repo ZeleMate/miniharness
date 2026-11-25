@@ -17,12 +17,12 @@ concurrency:
 
 jobs:
   repo-lint:
-    uses: ZeleMate/workflows/.github/workflows/repo-lint.yml@14c90afb9ee7d296703f0194c9fb19bab8a11077  # v1.0.1
+    uses: ZeleMate/workflows/.github/workflows/repo-lint.yml@1908ed9c83fa76ed4361d2cccff80ae401503fc5  # v1.1.0
     permissions:
       contents: read
 
   python:
-    uses: ZeleMate/workflows/.github/workflows/python.yml@14c90afb9ee7d296703f0194c9fb19bab8a11077  # v1.0.1
+    uses: ZeleMate/workflows/.github/workflows/python.yml@1908ed9c83fa76ed4361d2cccff80ae401503fc5  # v1.1.0
     permissions:
       contents: read
     with:
@@ -32,7 +32,7 @@ jobs:
       working-directory: .
 
   security:
-    uses: ZeleMate/workflows/.github/workflows/security.yml@14c90afb9ee7d296703f0194c9fb19bab8a11077  # v1.0.1
+    uses: ZeleMate/workflows/.github/workflows/security.yml@1908ed9c83fa76ed4361d2cccff80ae401503fc5  # v1.1.0
     permissions:
       contents: read
     with:
